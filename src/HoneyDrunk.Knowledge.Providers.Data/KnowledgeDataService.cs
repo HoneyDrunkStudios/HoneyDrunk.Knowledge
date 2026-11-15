@@ -1,15 +1,15 @@
 using HoneyDrunk.Knowledge.Abstractions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace HoneyDrunk.Knowledge.Providers.Data;
 
 /// <summary>
 /// Reads and writes source versions and their chunks. Each call uses its own context from the factory, so the
 /// service is safe as a singleton. Every read of a current version goes through the filtered unique index
-/// (<c>SupersededAt IS NULL</c>). No exception that leaves this class carries an entity, a passage or a vector: a
-/// <see cref="DbUpdateException"/> it rethrows, alone or inside the <see cref="RetryLimitExceededException"/> of a
-/// retrying strategy that gave up, is rebuilt from its message and the database's own exception.
+/// (<c>SupersededAt IS NULL</c>). No exception that leaves this class carries an entity, a passage or a vector:
+/// every write runs through <see cref="KnowledgeUnitOfWork"/>, which rebuilds a <see cref="DbUpdateException"/> found
+/// at any depth of what it throws (<see cref="KnowledgeExceptions.Sanitize"/>), and a refusal this class rethrows
+/// itself goes through <see cref="KnowledgeWriteAttempts.Sanitized"/>. Reads track no entity.
 /// </summary>
 /// <param name="contexts">Creates a context per call.</param>
 internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext> contexts)
@@ -49,11 +49,6 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
             try
             {
                 return await KnowledgeUnitOfWork.RunAsync(context, token => WriteAsync(context, write, token), cancellationToken).ConfigureAwait(false);
-            }
-            catch (RetryLimitExceededException error) when (error.InnerException is DbUpdateException refused)
-            {
-                // A retrying strategy gave up on a write; the refusal it wraps holds the entities being saved.
-                throw new RetryLimitExceededException(error.Message, KnowledgeWriteAttempts.Sanitized(refused));
             }
             catch (SupersedeLostException)
             {

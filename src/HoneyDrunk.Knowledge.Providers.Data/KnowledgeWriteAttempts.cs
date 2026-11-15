@@ -85,11 +85,12 @@ internal sealed class KnowledgeWriteAttempts
 
     /// <summary>
     /// The refusal without the entities Entity Framework attached to it: the same message and the database's own
-    /// exception, and no entity, so no passage or vector, in the exception a caller sees.
+    /// exception (itself sanitized by <see cref="KnowledgeExceptions.Sanitize"/>), and no entity, so no passage or
+    /// vector, in the exception a caller sees.
     /// </summary>
     /// <param name="error">The refusal.</param>
     /// <returns>A refusal that carries no entity.</returns>
-    internal static DbUpdateException Sanitized(DbUpdateException error) => new(error.Message, error.InnerException);
+    internal static DbUpdateException Sanitized(DbUpdateException error) => new(error.Message, KnowledgeExceptions.SanitizeInner(error.InnerException));
 
     private void ThrowAtCap()
     {
