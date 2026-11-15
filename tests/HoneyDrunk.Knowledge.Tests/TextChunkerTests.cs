@@ -72,7 +72,7 @@ public sealed class TextChunkerTests
     [Fact]
     public void Control_and_format_characters_are_removed_and_tabs_become_spaces()
     {
-        var chunks = TextChunker.Split("a\u0000b‮c​d\te\r\nf\rg  \n\nh\u0007");
+        var chunks = TextChunker.Split("a\u0000b\u202Ec\u200Bd\te\r\nf\rg  \n\nh\u0007");
 
         Assert.Equal(new[] { "abcd e\nf\ng\n\nh" }, chunks);
     }
@@ -91,7 +91,7 @@ public sealed class TextChunkerTests
     [Theory]
     [InlineData("")]
     [InlineData("   \n\n\t\r\n  ")]
-    [InlineData("\u0000​‮")]
+    [InlineData("\u0000\u200B\u202E")]
     public void Text_that_cleans_to_nothing_is_refused(string text)
     {
         var error = Assert.Throws<ArgumentException>(() => TextChunker.Split(text));

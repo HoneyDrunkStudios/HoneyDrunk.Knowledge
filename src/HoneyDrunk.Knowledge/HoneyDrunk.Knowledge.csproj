@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>HoneyDrunk knowledge runtime: document chunking, ingest through the embedding generator and similarity retrieval over any knowledge store.</Description>
+    <Description>HoneyDrunk knowledge runtime: splits plain text and Markdown documents into bounded passages.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

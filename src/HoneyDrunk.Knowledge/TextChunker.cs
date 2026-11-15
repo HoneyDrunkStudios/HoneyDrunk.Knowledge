@@ -12,32 +12,29 @@ internal static class TextChunker
 {
     private const string ParagraphSeparator = "\n\n";
 
-    // The parameter name the caller sees; the public ingest method names its text "document".
-    private static string DocumentParameter => "document";
-
-    /// <summary>Cleans <paramref name="text"/> and packs its paragraphs into passages.</summary>
-    /// <param name="text">The document text.</param>
+    /// <summary>Cleans <paramref name="document"/> and packs its paragraphs into passages.</summary>
+    /// <param name="document">The document text.</param>
     /// <returns>One to 1,024 passages, in order.</returns>
     /// <exception cref="ArgumentException">
     /// Nothing is left after cleaning, or the text needs more than <see cref="KnowledgeLimits.MaxChunksPerVersion"/> passages.
     /// The message never holds any of the text.
     /// </exception>
-    internal static IReadOnlyList<string> Split(string text)
+    internal static IReadOnlyList<string> Split(string document)
     {
-        ArgumentNullException.ThrowIfNull(text, DocumentParameter);
+        ArgumentNullException.ThrowIfNull(document);
 
         var chunks = new List<string>();
         var current = new StringBuilder();
 
-        foreach (var paragraph in Paragraphs(Clean(text)))
+        foreach (var paragraph in Paragraphs(Clean(document)))
         {
             if (paragraph.Length > KnowledgeLimits.MaxChunkTextLength)
             {
-                Flush(chunks, current);
+                Flush();
                 var pieces = Cut(paragraph);
                 for (var i = 0; i < pieces.Count - 1; i++)
                 {
-                    Add(chunks, pieces[i]);
+                    Add(pieces[i]);
                 }
 
                 current.Append(pieces[^1]);
@@ -52,42 +49,42 @@ internal static class TextChunker
             }
             else
             {
-                Flush(chunks, current);
+                Flush();
                 current.Append(paragraph);
             }
         }
 
-        Flush(chunks, current);
+        Flush();
 
         if (chunks.Count == 0)
         {
-            throw new ArgumentException("The document has no text after control and format characters are removed.", DocumentParameter);
+            throw new ArgumentException("The document has no text after control and format characters are removed.", nameof(document));
         }
 
         return chunks;
-    }
 
-    private static void Flush(List<string> chunks, StringBuilder current)
-    {
-        if (current.Length == 0)
+        void Flush()
         {
-            return;
+            if (current.Length == 0)
+            {
+                return;
+            }
+
+            Add(current.ToString());
+            current.Clear();
         }
 
-        Add(chunks, current.ToString());
-        current.Clear();
-    }
-
-    private static void Add(List<string> chunks, string chunk)
-    {
-        if (chunks.Count >= KnowledgeLimits.MaxChunksPerVersion)
+        void Add(string chunk)
         {
-            throw new ArgumentException(
-                string.Create(CultureInfo.InvariantCulture, $"The document needs more than {KnowledgeLimits.MaxChunksPerVersion} chunks, which is the limit."),
-                DocumentParameter);
-        }
+            if (chunks.Count >= KnowledgeLimits.MaxChunksPerVersion)
+            {
+                throw new ArgumentException(
+                    string.Create(CultureInfo.InvariantCulture, $"The document needs more than {KnowledgeLimits.MaxChunksPerVersion} chunks, which is the limit."),
+                    nameof(document));
+            }
 
-        chunks.Add(chunk);
+            chunks.Add(chunk);
+        }
     }
 
     private static string Clean(string text)
