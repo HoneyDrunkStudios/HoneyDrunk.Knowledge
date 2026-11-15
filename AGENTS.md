@@ -11,7 +11,7 @@ Read the [shared engineering conventions](https://github.com/HoneyDrunkStudios/H
 | Package | Rule |
 |---|---|
 | `HoneyDrunk.Knowledge.Abstractions` | The contracts. References `HoneyDrunk.AI.Abstractions` and no other HoneyDrunk package. Its surfaces (`IKnowledgeStore`, `IDocumentIngester`, `IRetrievalPipeline`, `KnowledgeSource`) are frozen by the contract-shape canary; a change needs a version bump |
-| `HoneyDrunk.Knowledge` | The runtime. References `Kernel.Abstractions` and `AI.Abstractions` only |
+| `HoneyDrunk.Knowledge` | The runtime. References `HoneyDrunk.Knowledge.Abstractions`, `HoneyDrunk.Kernel.Abstractions` and `HoneyDrunk.AI.Abstractions`, and no other package besides the build-only `HoneyDrunk.Standards` analyzers every package uses |
 | `HoneyDrunk.Knowledge.Providers.InMemory` | Test and local-development store. References Abstractions only |
 | `HoneyDrunk.Knowledge.Providers.Data` | Durable store. References Abstractions and `HoneyDrunk.Data.EntityFramework` (with EF Core); no database driver |
 
@@ -30,7 +30,7 @@ dotnet pack HoneyDrunk.Knowledge.slnx -c Release -o artifacts
 
 ### SQL Server lane
 
-The SQL Server tests are not in the solution. They deploy the three shipped scripts (`src/HoneyDrunk.Knowledge.Providers.Data/Sql/`) to a new database on the server named by `HONEYDRUNK_KNOWLEDGE_TEST_SQLSERVER` (a connection string with no database), run the shared store contract and the schema checks, and drop the database:
+The SQL Server tests are not in the solution. They deploy the three shipped scripts (source folder `src/HoneyDrunk.Knowledge.Providers.Data/Sql/`, packed into the package's `sql/` folder) to a new database on the server named by `HONEYDRUNK_KNOWLEDGE_TEST_SQLSERVER` (a connection string with no database), run the shared store contract and the schema checks, and drop the database:
 
 ```bash
 sqllocaldb create KnowledgeProviderTests -s

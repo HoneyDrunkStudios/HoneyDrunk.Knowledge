@@ -7,6 +7,7 @@ using HoneyDrunk.Kernel.Telemetry;
 using HoneyDrunk.Knowledge.Abstractions;
 using HoneyDrunk.Knowledge.Providers.InMemory;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Diagnostics;
 using Xunit;
 
@@ -36,8 +37,12 @@ public sealed class KernelCanaryTests
             options.EnvironmentId = new("test");
         }).AddTelemetry();
 
-        // A host with no HTTP request (a job) swaps in Kernel's ambient accessor; the node's default reads the request.
-        services.AddSingleton<IGridContextAccessor, ScopedGridContextAccessor>();
+        // A host with no HTTP request (a job) replaces the node's default accessor, which reads the request, with
+        // Kernel's ambient one, as the runtime README tells it to: one registration, the node's lifetime.
+        services.Replace(ServiceDescriptor.Singleton<IGridContextAccessor, ScopedGridContextAccessor>());
+        var accessor = Assert.Single(services, service => service.ServiceType == typeof(IGridContextAccessor));
+        Assert.Equal(typeof(ScopedGridContextAccessor), accessor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Singleton, accessor.Lifetime);
         services.AddSingleton<IEmbeddingGenerator>(new InMemoryEmbeddingGenerator("model-a"));
         services.AddHoneyDrunkKnowledge<InMemoryKnowledgeStore>(options => options.EmbeddingModelId = "model-a");
         await using var provider = services.BuildServiceProvider();
