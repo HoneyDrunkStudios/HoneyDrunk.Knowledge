@@ -16,8 +16,39 @@ permissions:
   pull-requests: write
 
 jobs:
+  # The compiled-API comparison builds the Abstractions project at the base ref. A pull request whose base has no
+  # such project (the first slice adds it) has no baseline to compare against, so the comparison is skipped and
+  # the reason is logged. The contract-shape canary below still runs on every pull request.
+  abstractions-baseline:
+    name: Abstractions Baseline
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      present: ${{ steps.look.outputs.present }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Look for the Abstractions project at the base ref
+        id: look
+        env:
+          PROJECT: src/HoneyDrunk.Knowledge.Abstractions/HoneyDrunk.Knowledge.Abstractions.csproj
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -f "$PROJECT" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "The base ref $BASE_SHA has $PROJECT: Abstractions Shape compares against it."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Abstractions Shape skipped::The base ref $BASE_SHA has no $PROJECT, so there is no compiled baseline to compare against. The Contract Shape Canary job still checks the frozen contract file."
+          fi
+
   abstractions-shape:
     name: Abstractions Shape
+    needs: abstractions-baseline
+    if: needs.abstractions-baseline.outputs.present == 'true'
     uses: HoneyDrunkStudios/HoneyDrunk.Actions/.github/workflows/job-api-compatibility.yml@678aa08e4242b665e40b32a97833f969bc083af0
     with:
       actions-ref: '678aa08e4242b665e40b32a97833f969bc083af0'
