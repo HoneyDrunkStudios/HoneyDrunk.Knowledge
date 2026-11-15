@@ -11,17 +11,6 @@ namespace HoneyDrunk.Knowledge.Providers.Data;
 /// <param name="contexts">Creates a context per call.</param>
 internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext> contexts)
 {
-    /// <summary>
-    /// How many times one store call decides and writes before it gives up. Each attempt after the first follows
-    /// a write that the database refused while the version this writer read was no longer seen as current: a loss
-    /// to another writer of the same source. The bound is reached when other writers keep winning, or when a
-    /// refusal that is no race keeps looking like one.
-    /// </summary>
-    internal const int MaxWriteAttempts = 100;
-
-    private const string OvertakenTooOften =
-        "The version could not be stored: on every attempt the database refused it while other writers appeared to be storing versions of the same source. Nothing was stored; the call can be repeated.";
-
     private readonly IDbContextFactory<KnowledgeDbContext> contexts = contexts ?? throw new ArgumentNullException(nameof(contexts));
 
     /// <summary>Reads the current version of a source.</summary>
@@ -39,9 +28,8 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
     /// Stores a version in one transaction: read the current version, then write nothing (<c>Unchanged</c>), or
     /// supersede it with a conditional update, delete its chunks and insert the new version with its chunks. A
     /// writer whose read was overtaken by another writer's commit loses at the database, either at the conditional
-    /// update or at the filtered unique index; it then re-reads and decides again as the second writer, at most
-    /// <see cref="MaxWriteAttempts"/> times in all, after which it stores nothing and throws
-    /// <see cref="InvalidOperationException"/>.
+    /// update or at the filtered unique index; it then re-reads and decides again as the second writer, within the
+    /// bounds of <see cref="KnowledgeWriteAttempts"/>. A call that gives up stores nothing.
     /// </summary>
     /// <param name="source">The version to store.</param>
     /// <param name="chunks">The checked chunks.</param>
@@ -52,7 +40,8 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
     {
         var write = new VersionWrite(source, [.. chunks.Select(chunk => chunk.Embedding.Value)], [.. chunks.Select(chunk => VectorCodec.Encode(chunk.Embedding.Vector))], dimensions);
         await using var context = await this.contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        for (var attempt = 1; ; attempt++)
+        var attempts = new KnowledgeWriteAttempts();
+        while (true)
         {
             try
             {
@@ -60,25 +49,13 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
             }
             catch (SupersedeLostException)
             {
-                if (attempt >= MaxWriteAttempts)
-                {
-                    throw new InvalidOperationException(OvertakenTooOften);
-                }
+                attempts.LostAtSupersede();
             }
             catch (DbUpdateException error)
             {
-                // The insert failed. While the version this writer read is still current, no other writer was
-                // involved and the failure is reported at once, without its entities. Otherwise this writer lost the
-                // race at the filtered unique index, and decides again within the cap.
-                if (!await OvertakenAsync(context, write, cancellationToken).ConfigureAwait(false))
-                {
-                    throw new DbUpdateException(error.Message, error.InnerException);
-                }
-
-                if (attempt >= MaxWriteAttempts)
-                {
-                    throw new InvalidOperationException(OvertakenTooOften);
-                }
+                // The insert failed: the attempts decide from what this writer read and what a re-read finds now.
+                var rereadCurrentId = await RereadCurrentIdAsync(context, write, cancellationToken).ConfigureAwait(false);
+                attempts.RefusedInsert(error, write.ReadCurrentId, rereadCurrentId);
             }
         }
     }
@@ -165,17 +142,14 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
     }
 
     /// <summary>
-    /// Decides whether a failed insert lost a race. Only when the re-read finds the very version this writer read
-    /// still current is the failure certainly not a race. Another current version means another writer won. No
-    /// current version also counts as a loss: under SQL Server's default locking read committed, a read can miss
-    /// the current row while another writer replaces it, so the re-read may see nothing although a version is
-    /// stored. A failure that is no race but looks like one ends at <see cref="MaxWriteAttempts"/>.
+    /// Re-reads the id of the source's current version after a refused insert, outside the rolled-back transaction.
+    /// Under SQL Server's default locking read committed it can miss the current row while another writer replaces
+    /// it, which <see cref="KnowledgeWriteAttempts"/> takes into account.
     /// </summary>
-    private static async Task<bool> OvertakenAsync(KnowledgeDbContext context, VersionWrite write, CancellationToken cancellationToken)
+    private static async Task<string?> RereadCurrentIdAsync(KnowledgeDbContext context, VersionWrite write, CancellationToken cancellationToken)
     {
         context.ChangeTracker.Clear();
-        var currentId = await Current(context, write.Source.SourceId).Select(row => row.Id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-        return currentId is null || !string.Equals(currentId, write.ReadCurrentId, StringComparison.Ordinal);
+        return await Current(context, write.Source.SourceId).Select(row => row.Id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<Hit[]> RankAsync(KnowledgeDbContext context, Dictionary<string, KnowledgeSource> scorable, SimilarityQuery query, CancellationToken cancellationToken)

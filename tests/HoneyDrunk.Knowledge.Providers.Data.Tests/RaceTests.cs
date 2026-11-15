@@ -109,25 +109,53 @@ public sealed class RaceTests : IDisposable
     }
 
     /// <summary>
-    /// A version the database refuses on every attempt while no current version is seen looks like a lost race
-    /// each time; the store stops at <see cref="KnowledgeDataService.MaxWriteAttempts"/>, stores nothing and throws
-    /// <see cref="InvalidOperationException"/> with a message that names the rule only.
+    /// A writer that loses to a current version on every attempt (its own read never sees the current version, the
+    /// re-read always does) stops at <see cref="KnowledgeWriteAttempts.MaxWriteAttempts"/>, stores nothing and throws
+    /// <see cref="InvalidOperationException"/>. The message names the rule and the type of the last refusal only.
     /// </summary>
     /// <returns>A task.</returns>
     [Fact]
-    public async Task A_write_refused_on_every_attempt_stops_at_the_cap_and_stores_nothing()
+    public async Task A_write_that_loses_on_every_attempt_stops_at_the_cap_and_stores_nothing()
+    {
+        await this.database.CreateStore().StoreVersionAsync(Source(version: "v1"), Chunks("one", ModelA, [1f, 0f]));
+        var overtaken = new Overtaken();
+        var store = this.database.CreateStore(overtaken);
+
+        overtaken.BlankEveryReadInWrites = true;
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.StoreVersionAsync(Source(version: "v2", updatedAfter: TimeSpan.FromMinutes(1)), Chunks("refused passage", ModelA, [1f, 0f])));
+
+        Assert.Equal(KnowledgeWriteAttempts.MaxWriteAttempts, overtaken.FailedInserts);
+        Assert.Null(refused.InnerException);
+        Assert.EndsWith("The last refusal was a SqliteException.", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("docs:intro", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("passage", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("UNIQUE", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(["v1|current"], await this.LineageAsync());
+        await using var context = this.database.CreateContext();
+        Assert.Equal(1, await context.Chunks.CountAsync());
+    }
+
+    /// <summary>
+    /// A new source whose insert the database refuses on every attempt, with no current version seen by the write's
+    /// read or the re-read, is retried <see cref="KnowledgeWriteAttempts.MaxBlindRetries"/> times in a row, then the
+    /// refusal surfaces as a <see cref="DbUpdateException"/> that carries no entity, and nothing is stored.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task A_new_source_refused_on_every_attempt_surfaces_after_five_retries()
     {
         await this.RefuseEveryVersionInsertAsync();
         var overtaken = new Overtaken();
         var store = this.database.CreateStore(overtaken);
 
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(
+        var refused = await Assert.ThrowsAsync<DbUpdateException>(
             () => store.StoreVersionAsync(Source(), Chunks("refused passage", ModelA, [1f, 0f])));
 
-        Assert.Equal(KnowledgeDataService.MaxWriteAttempts, overtaken.FailedInserts);
-        Assert.Null(refused.InnerException);
-        Assert.DoesNotContain("docs:intro", refused.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("passage", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(5, KnowledgeWriteAttempts.MaxBlindRetries);
+        Assert.Equal(KnowledgeWriteAttempts.MaxBlindRetries + 1, overtaken.FailedInserts);
+        Assert.Empty(refused.Entries);
+        Assert.IsType<Microsoft.Data.Sqlite.SqliteException>(refused.InnerException);
         Assert.Empty(await this.LineageAsync());
         await using var context = this.database.CreateContext();
         Assert.Equal(0, await context.Chunks.CountAsync());
@@ -244,6 +272,12 @@ public sealed class RaceTests : IDisposable
 
         public bool Armed => Volatile.Read(ref this.armed) is not null;
 
+        /// <summary>
+        /// Gets or sets a value indicating whether every read of source versions inside a write comes back empty,
+        /// while reads outside a write (the re-read after a refusal) see the table as it is.
+        /// </summary>
+        public bool BlankEveryReadInWrites { get; set; }
+
         /// <summary>Gets how many reads of source versions are still to come back empty.</summary>
         public int BlankReads => Volatile.Read(ref this.blankReads);
 
@@ -271,7 +305,8 @@ public sealed class RaceTests : IDisposable
 
         public override async ValueTask<DbDataReader> ReaderExecutedAsync(DbCommand command, CommandExecutedEventData eventData, DbDataReader result, CancellationToken cancellationToken = default)
         {
-            if (command.CommandText.Contains("FROM \"SourceVersion\"", StringComparison.Ordinal) && TakeOne(ref this.blankReads))
+            var readsVersions = command.CommandText.Contains("FROM \"SourceVersion\"", StringComparison.Ordinal);
+            if (readsVersions && (TakeOne(ref this.blankReads) || (this.BlankEveryReadInWrites && command.Transaction is not null)))
             {
                 await result.DisposeAsync();
                 using var nothing = new DataTable();

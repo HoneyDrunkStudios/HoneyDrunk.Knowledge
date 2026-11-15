@@ -22,8 +22,8 @@ public sealed class SqlServerDataKnowledgeStoreTests : KnowledgeStoreContract, I
     [Fact]
     public async Task Text_compares_by_exact_value()
     {
-        const string Composed = "model-é";
-        const string Decomposed = "model-é";
+        const string Composed = "model-\u00e9";
+        const string Decomposed = "model-e\u0301";
         var store = this.CreateStore();
         await store.StoreVersionAsync(Source(version: "v1"), Chunks("lower", ModelA, [1f, 0f]));
 

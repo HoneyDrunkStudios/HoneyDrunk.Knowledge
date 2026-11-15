@@ -12,6 +12,7 @@ on:
       - '.github/workflows/sqlserver.yml'
       - 'src/HoneyDrunk.Knowledge.Abstractions/**'
       - 'src/HoneyDrunk.Knowledge.Providers.Data/**'
+      - 'src/Shared/**'
       - 'tests/HoneyDrunk.Knowledge.Providers.Data.SqlServerTests/**'
       - 'tests/Shared/**'
   workflow_dispatch:

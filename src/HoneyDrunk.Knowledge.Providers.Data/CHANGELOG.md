@@ -5,7 +5,7 @@
 ### Added
 
 - `DataKnowledgeStore`: a durable `IKnowledgeStore` over HoneyDrunk.Data's Entity Framework layer, registered with `AddKnowledgeDataProvider`. It runs the store contract every provider shares, on SQLite.
-- One current version per source, held by a filtered unique index. A writer that loses a race re-reads and decides again as the second writer would, at most 100 attempts in all; at that bound it stores nothing and throws `InvalidOperationException`.
+- One current version per source, held by a filtered unique index. A writer that loses a race re-reads and decides again as the second writer would, at most 100 attempts in all; at that bound it stores nothing and throws `InvalidOperationException` naming the last refusal's exception type. A refusal where no current version was seen before or after is retried at most 5 times in a row, then surfaces as a `DbUpdateException` without entities.
 - Writes run under the database provider's execution strategy; a retry after a lost commit reply finds the version stored and answers `Unchanged`.
 - Search streams versions, positions and vectors only, keeps the best results in memory and loads text for those alone.
 - A context configured with sensitive data logging is refused, so passages and vectors cannot reach logs through Entity Framework.
