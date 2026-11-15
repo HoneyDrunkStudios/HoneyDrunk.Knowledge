@@ -3,11 +3,13 @@
     <Project Path="src/HoneyDrunk.Knowledge.Abstractions/HoneyDrunk.Knowledge.Abstractions.csproj" />
     <Project Path="src/HoneyDrunk.Knowledge/HoneyDrunk.Knowledge.csproj" />
     <Project Path="src/HoneyDrunk.Knowledge.Providers.InMemory/HoneyDrunk.Knowledge.Providers.InMemory.csproj" />
+    <Project Path="src/HoneyDrunk.Knowledge.Providers.Data/HoneyDrunk.Knowledge.Providers.Data.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/HoneyDrunk.Knowledge.Abstractions.Tests/HoneyDrunk.Knowledge.Abstractions.Tests.csproj" />
     <Project Path="tests/HoneyDrunk.Knowledge.Tests/HoneyDrunk.Knowledge.Tests.csproj" />
     <Project Path="tests/HoneyDrunk.Knowledge.Canary/HoneyDrunk.Knowledge.Canary.csproj" />
     <Project Path="tests/HoneyDrunk.Knowledge.Providers.InMemory.Tests/HoneyDrunk.Knowledge.Providers.InMemory.Tests.csproj" />
+    <Project Path="tests/HoneyDrunk.Knowledge.Providers.Data.Tests/HoneyDrunk.Knowledge.Providers.Data.Tests.csproj" />
   </Folder>
 </Solution>
