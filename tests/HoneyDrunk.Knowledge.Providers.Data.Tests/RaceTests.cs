@@ -1,6 +1,7 @@
 using HoneyDrunk.Knowledge.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
@@ -127,7 +128,7 @@ public sealed class RaceTests : IDisposable
 
         Assert.Equal(KnowledgeWriteAttempts.MaxWriteAttempts, overtaken.FailedInserts);
         Assert.Null(refused.InnerException);
-        Assert.EndsWith("The last refusal was a SqliteException.", refused.Message, StringComparison.Ordinal);
+        Assert.EndsWith("The last refusal's type was SqliteException.", refused.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("docs:intro", refused.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("passage", refused.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("UNIQUE", refused.Message, StringComparison.Ordinal);
@@ -156,6 +157,63 @@ public sealed class RaceTests : IDisposable
         Assert.Equal(KnowledgeWriteAttempts.MaxBlindRetries + 1, overtaken.FailedInserts);
         Assert.Empty(refused.Entries);
         Assert.IsType<Microsoft.Data.Sqlite.SqliteException>(refused.InnerException);
+        Assert.Empty(await this.LineageAsync());
+        await using var context = this.database.CreateContext();
+        Assert.Equal(0, await context.Chunks.CountAsync());
+    }
+
+    /// <summary>
+    /// A refused insert where the re-read sees a current version is a lost race and ends a run of blind losses
+    /// (neither read saw a current version): the count of blind losses in a row starts again after it. Five blind
+    /// losses, one loss that saw the current version, then six blind losses: the sixth in a row surfaces the
+    /// refusal, after twelve refused inserts in all, and nothing is stored.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task A_loss_that_sees_a_current_version_starts_the_blind_run_again()
+    {
+        await this.database.CreateStore().StoreVersionAsync(Source(version: "v1"), Chunks("one", ModelA, [1f, 0f]));
+        await this.RefuseEveryVersionInsertAsync();
+        var overtaken = new Overtaken
+        {
+            BlankEveryReadInWrites = true,
+            BlankReread = reread => reread != KnowledgeWriteAttempts.MaxBlindRetries + 1,
+        };
+        var store = this.database.CreateStore(overtaken);
+
+        var refused = await Assert.ThrowsAsync<DbUpdateException>(
+            () => store.StoreVersionAsync(Source(version: "v2", updatedAfter: TimeSpan.FromMinutes(1)), Chunks("two", ModelA, [1f, 0f])));
+
+        Assert.Equal((2 * KnowledgeWriteAttempts.MaxBlindRetries) + 2, overtaken.FailedInserts);
+        Assert.Empty(refused.Entries);
+        Assert.Equal(["v1|current"], await this.LineageAsync());
+    }
+
+    /// <summary>
+    /// A write the host's retrying strategy gives up on leaves as the strategy's
+    /// <see cref="RetryLimitExceededException"/>, but the <see cref="DbUpdateException"/> inside it carries no
+    /// entity (no passage, no vector), only the fault the database gave; nothing is stored.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task A_write_that_runs_out_of_retries_surfaces_without_entities()
+    {
+        var fault = new TransientInsertFault();
+        var store = this.database.CreateStore(options =>
+        {
+            options.UseSqlite(this.database.ConnectionString, sqlite => sqlite.ExecutionStrategy(dependencies => new TransientInsertFault.RetryStrategy(dependencies)));
+            options.AddInterceptors(fault);
+        });
+
+        var gaveUp = await Assert.ThrowsAsync<RetryLimitExceededException>(
+            () => store.StoreVersionAsync(Source(), Chunks("refused passage", ModelA, [1f, 0f], [0f, 1f])));
+
+        Assert.Equal(TransientInsertFault.RetryStrategy.MaxRetries + 1, fault.Faults);
+        var refused = Assert.IsType<DbUpdateException>(gaveUp.InnerException);
+        Assert.Empty(refused.Entries);
+        Assert.IsType<TransientInsertFault.FaultException>(refused.InnerException);
+        Assert.DoesNotContain("docs:intro", gaveUp.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("passage", gaveUp.ToString(), StringComparison.Ordinal);
         Assert.Empty(await this.LineageAsync());
         await using var context = this.database.CreateContext();
         Assert.Equal(0, await context.Chunks.CountAsync());
@@ -270,7 +328,15 @@ public sealed class RaceTests : IDisposable
 
         private int failedInserts;
 
+        private int rereads;
+
         public bool Armed => Volatile.Read(ref this.armed) is not null;
+
+        /// <summary>
+        /// Gets or sets which reads of source versions outside a write (the re-reads after a refusal) come back
+        /// empty: it is given each such read's number, counting from 1, and answers whether to blank it.
+        /// </summary>
+        public Func<int, bool>? BlankReread { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether every read of source versions inside a write comes back empty,
@@ -306,6 +372,13 @@ public sealed class RaceTests : IDisposable
         public override async ValueTask<DbDataReader> ReaderExecutedAsync(DbCommand command, CommandExecutedEventData eventData, DbDataReader result, CancellationToken cancellationToken = default)
         {
             var readsVersions = command.CommandText.Contains("FROM \"SourceVersion\"", StringComparison.Ordinal);
+            if (readsVersions && command.Transaction is null && this.BlankReread is { } blankReread && blankReread(Interlocked.Increment(ref this.rereads)))
+            {
+                await result.DisposeAsync();
+                using var blank = new DataTable();
+                return blank.CreateDataReader();
+            }
+
             if (readsVersions && (TakeOne(ref this.blankReads) || (this.BlankEveryReadInWrites && command.Transaction is not null)))
             {
                 await result.DisposeAsync();
