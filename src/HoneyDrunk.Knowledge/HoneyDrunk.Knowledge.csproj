@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>HoneyDrunk knowledge runtime: splits plain text and Markdown documents into bounded passages.</Description>
+    <Description>HoneyDrunk knowledge runtime: splits plain text and Markdown documents into bounded passages, embeds them through IEmbeddingGenerator and stores them through an IKnowledgeStore provider, with DI registration.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

@@ -3,9 +3,13 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\HoneyDrunk.Knowledge\HoneyDrunk.Knowledge.csproj" />
     <ProjectReference Include="..\..\src\HoneyDrunk.Knowledge.Abstractions\HoneyDrunk.Knowledge.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\HoneyDrunk.Knowledge.Providers.InMemory\HoneyDrunk.Knowledge.Providers.InMemory.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="HoneyDrunk.Standards" Version="0.4.4" PrivateAssets="all" />
     <PackageReference Include="HoneyDrunk.Standards.Tests" Version="0.4.4" PrivateAssets="all" />
+    <PackageReference Include="HoneyDrunk.AI.Providers.InMemory" Version="0.3.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.0" />
   </ItemGroup>
 </Project>
