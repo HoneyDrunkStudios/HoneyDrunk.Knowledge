@@ -13,13 +13,14 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
 {
     /// <summary>
     /// How many times one store call decides and writes before it gives up. Each attempt after the first follows
-    /// a loss to another writer that committed a version of the same source, so the bound is only reached when
-    /// other writers keep winning.
+    /// a write that the database refused while the version this writer read was no longer seen as current: a loss
+    /// to another writer of the same source. The bound is reached when other writers keep winning, or when a
+    /// refusal that is no race keeps looking like one.
     /// </summary>
     internal const int MaxWriteAttempts = 100;
 
     private const string OvertakenTooOften =
-        "Other writers kept storing versions of this source while this version was being stored. Nothing was stored; the call can be repeated.";
+        "The version could not be stored: on every attempt the database refused it while other writers appeared to be storing versions of the same source. Nothing was stored; the call can be repeated.";
 
     private readonly IDbContextFactory<KnowledgeDbContext> contexts = contexts ?? throw new ArgumentNullException(nameof(contexts));
 
@@ -38,7 +39,9 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
     /// Stores a version in one transaction: read the current version, then write nothing (<c>Unchanged</c>), or
     /// supersede it with a conditional update, delete its chunks and insert the new version with its chunks. A
     /// writer whose read was overtaken by another writer's commit loses at the database, either at the conditional
-    /// update or at the filtered unique index; it then re-reads once and decides again as the second writer.
+    /// update or at the filtered unique index; it then re-reads and decides again as the second writer, at most
+    /// <see cref="MaxWriteAttempts"/> times in all, after which it stores nothing and throws
+    /// <see cref="InvalidOperationException"/>.
     /// </summary>
     /// <param name="source">The version to store.</param>
     /// <param name="chunks">The checked chunks.</param>
@@ -64,11 +67,17 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
             }
             catch (DbUpdateException error)
             {
-                // The insert failed. When another writer's version is now current, this writer lost the race at the
-                // filtered unique index; otherwise the failure is not a race and is reported.
-                if (attempt >= MaxWriteAttempts || !await OvertakenAsync(context, write, cancellationToken).ConfigureAwait(false))
+                // The insert failed. While the version this writer read is still current, no other writer was
+                // involved and the failure is reported at once, without its entities. Otherwise this writer lost the
+                // race at the filtered unique index, and decides again within the cap.
+                if (!await OvertakenAsync(context, write, cancellationToken).ConfigureAwait(false))
                 {
                     throw new DbUpdateException(error.Message, error.InnerException);
+                }
+
+                if (attempt >= MaxWriteAttempts)
+                {
+                    throw new InvalidOperationException(OvertakenTooOften);
                 }
             }
         }
@@ -155,11 +164,18 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
         return outcome;
     }
 
+    /// <summary>
+    /// Decides whether a failed insert lost a race. Only when the re-read finds the very version this writer read
+    /// still current is the failure certainly not a race. Another current version means another writer won. No
+    /// current version also counts as a loss: under SQL Server's default locking read committed, a read can miss
+    /// the current row while another writer replaces it, so the re-read may see nothing although a version is
+    /// stored. A failure that is no race but looks like one ends at <see cref="MaxWriteAttempts"/>.
+    /// </summary>
     private static async Task<bool> OvertakenAsync(KnowledgeDbContext context, VersionWrite write, CancellationToken cancellationToken)
     {
         context.ChangeTracker.Clear();
         var currentId = await Current(context, write.Source.SourceId).Select(row => row.Id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-        return currentId is not null && !string.Equals(currentId, write.ReadCurrentId, StringComparison.Ordinal);
+        return currentId is null || !string.Equals(currentId, write.ReadCurrentId, StringComparison.Ordinal);
     }
 
     private static async Task<Hit[]> RankAsync(KnowledgeDbContext context, Dictionary<string, KnowledgeSource> scorable, SimilarityQuery query, CancellationToken cancellationToken)
