@@ -21,6 +21,21 @@ The provider type is a singleton, added only if it is not registered already, so
 
 The options are checked when the runtime first reads them (`OptionsValidationException`). Call `ValidateOnStart` on `AddOptions<KnowledgeOptions>()` to check them at start-up instead.
 
+## Host composition
+
+A host registers, besides this package: a store provider, an `IEmbeddingGenerator`, logging and Kernel's `ITelemetryActivityFactory` (`AddHoneyDrunkNode(...).AddTelemetry()`). Resolve `IDocumentIngester` and `IRetrievalPipeline` from a scope.
+
+A host with no HTTP request, such as a job or a worker, must do two things, because Kernel's default `IGridContextAccessor` reads the current request and the telemetry factory asks it for the Grid context:
+
+1. **Replace** the accessor, do not add a second registration: `services.Replace(ServiceDescriptor.Singleton<IGridContextAccessor, ScopedGridContextAccessor>());`.
+2. **Wrap each ingest and each retrieve** in `using (ScopedGridContextAccessor.SetContext(new GridContextSnapshot(...)))`. `ScopedGridContextAccessor` throws when no context is set, so a call outside the wrapper fails.
+
+A canary test runs ingest and retrieve this way and checks that the correlation id reaches the `knowledge.ingest`, `knowledge.retrieve` and `knowledge.store` activities.
+
+## Store providers and concurrency
+
+The runtime adds no locking of its own; the provider guarantees that two concurrent versions of one source never leave two current versions. `HoneyDrunk.Knowledge.Providers.InMemory` holds one lock. `HoneyDrunk.Knowledge.Providers.Data` lets a writer that loses a race at the database re-read and decide again, as the second writer would, within a fixed number of attempts (its README gives the bounds); a call that cannot settle stores nothing and throws. Exceptions from a provider pass through the runtime unchanged.
+
 ## Ingest
 
 A version already current under the configured model is `Unchanged`, with no generator call. Otherwise the text is split into passages and embedded in batches. Each batch must return one embedding per passage, in order, for the passage sent, from the configured model, with vectors of 1 to 8,192 finite values, all of one length; otherwise the ingest throws `InvalidOperationException` and stores nothing. A new version is stamped with the clock's time and supersedes the current one.
