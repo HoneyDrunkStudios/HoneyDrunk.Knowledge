@@ -11,8 +11,9 @@ namespace HoneyDrunk.Knowledge;
 /// <see cref="IngestOutcome.Unchanged"/> with no embedding call. Otherwise the text is split into passages,
 /// each batch of passages is embedded through <see cref="IEmbeddingGenerator"/> and checked, and the version
 /// is stored only when every batch passed (ADR-0021 D5). Each call runs in one <c>knowledge.ingest</c>
-/// activity tagged with metadata only (invariant 147). Exceptions from the generator and the store pass through
-/// unchanged; their messages are theirs.
+/// activity tagged with metadata only (invariant 147), a cancelled token included; only the caller's cancellation
+/// is tagged <c>cancelled</c>. Exceptions from the generator and the store pass through unchanged; their messages
+/// are theirs.
 /// </summary>
 /// <param name="store">The store.</param>
 /// <param name="generator">The host's embedding generator.</param>
@@ -39,10 +40,10 @@ internal sealed class DocumentIngester(
     public async Task<IngestResult> IngestAsync(KnowledgeDocument document, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
-        cancellationToken.ThrowIfCancellationRequested();
         using var activity = KnowledgeTelemetry.Start(this.telemetry, KnowledgeTelemetry.IngestActivity, KnowledgeTelemetry.IngestOperation, sourceId: document.SourceId);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var settings = this.options.Value;
             activity?.SetTag(KnowledgeTelemetry.EmbeddingModelId, settings.EmbeddingModelId);
             var result = await this.IngestCheckedAsync(document, settings, cancellationToken).ConfigureAwait(false);
@@ -52,15 +53,15 @@ internal sealed class DocumentIngester(
             KnowledgeLog.Ingested(this.logger, document.SourceId, settings.EmbeddingModelId, outcome, result.ChunkCount);
             return result;
         }
-        catch (OperationCanceledException)
-        {
-            activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Cancelled);
-            throw;
-        }
-        catch (Exception error) when (error is not OperationCanceledException)
+        catch (Exception error) when (!KnowledgeTelemetry.IsCallerCancellation(error, cancellationToken))
         {
             activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Error);
             KnowledgeLog.IngestFailed(this.logger, document.SourceId, error.GetType().Name);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Cancelled);
             throw;
         }
     }

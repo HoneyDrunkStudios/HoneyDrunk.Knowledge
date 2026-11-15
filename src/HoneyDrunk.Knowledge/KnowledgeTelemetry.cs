@@ -85,6 +85,17 @@ internal static class KnowledgeTelemetry
         _ => throw new ArgumentOutOfRangeException(nameof(outcome), "The ingest outcome is not a defined value."),
     };
 
+    /// <summary>
+    /// Tells whether a failure is the caller's cancellation: an <see cref="OperationCanceledException"/> while the
+    /// caller's token is cancelled. Only that is <c>cancelled</c>. Any other exception, including a cancellation the
+    /// caller did not ask for (a generator's or a provider's own timeout), is <c>error</c> and is logged.
+    /// </summary>
+    /// <param name="error">The exception.</param>
+    /// <param name="cancellationToken">The caller's token.</param>
+    /// <returns>Whether the exception is the caller's cancellation.</returns>
+    public static bool IsCallerCancellation(Exception error, CancellationToken cancellationToken) =>
+        error is OperationCanceledException && cancellationToken.IsCancellationRequested;
+
     /// <summary>Starts an activity carrying its operation and, when given, the provider and the source id.</summary>
     /// <param name="telemetry">The activity factory.</param>
     /// <param name="activityName">The activity name.</param>

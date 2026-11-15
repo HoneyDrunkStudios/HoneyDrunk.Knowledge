@@ -19,8 +19,8 @@ public sealed class RegistrationTests
     private static readonly DateTimeOffset Start = new(2026, 11, 15, 9, 0, 0, TimeSpan.Zero);
 
     /// <summary>
-    /// The store and the ingester resolve per scope over one singleton provider, the store as the observed
-    /// wrapper, and the composition validates. The retrieval pipeline, the third service, joins in the next change.
+    /// The store, the ingester and the retrieval pipeline resolve per scope over one singleton provider, the store
+    /// as the observed wrapper, and the composition validates.
     /// </summary>
     /// <returns>A task.</returns>
     [Fact]
@@ -33,6 +33,7 @@ public sealed class RegistrationTests
         Assert.Equal(ServiceLifetime.Singleton, Assert.Single(collection, item => item.ServiceType == typeof(InMemoryKnowledgeStore)).Lifetime);
         Assert.Equal(ServiceLifetime.Scoped, Assert.Single(collection, item => item.ServiceType == typeof(IKnowledgeStore)).Lifetime);
         Assert.Equal(ServiceLifetime.Scoped, Assert.Single(collection, item => item.ServiceType == typeof(IDocumentIngester)).Lifetime);
+        Assert.Equal(ServiceLifetime.Scoped, Assert.Single(collection, item => item.ServiceType == typeof(IRetrievalPipeline)).Lifetime);
         Assert.Single(collection, item => item.ServiceType == typeof(TimeProvider));
         var options = services.GetRequiredService<IOptions<KnowledgeOptions>>().Value;
         Assert.Equal("model-a", options.EmbeddingModelId);
@@ -46,12 +47,19 @@ public sealed class RegistrationTests
         Assert.Same(firstStore, first.ServiceProvider.GetRequiredService<IKnowledgeStore>());
         var ingester = Assert.IsType<DocumentIngester>(first.ServiceProvider.GetRequiredService<IDocumentIngester>());
         Assert.NotSame(ingester, second.ServiceProvider.GetRequiredService<IDocumentIngester>());
+        var pipeline = Assert.IsType<RetrievalPipeline>(second.ServiceProvider.GetRequiredService<IRetrievalPipeline>());
+        Assert.Same(pipeline, second.ServiceProvider.GetRequiredService<IRetrievalPipeline>());
+        Assert.NotSame(pipeline, first.ServiceProvider.GetRequiredService<IRetrievalPipeline>());
 
         var result = await ingester.IngestAsync(new KnowledgeDocument("docs:intro", "https://example.test/guide", "v1", "A short guide."));
 
         Assert.Equal(Start, result.Source.LastUpdatedAt);
         Assert.Equal("v1", (await secondStore.GetSourceAsync("docs:intro"))!.Version);
         Assert.Equal("v1", (await services.GetRequiredService<InMemoryKnowledgeStore>().GetSourceAsync("docs:intro"))!.Version);
+        var found = await pipeline.RetrieveAsync(new RetrievalRequest("A short guide.", ["docs:intro"]));
+        var chunk = Assert.Single(found.Chunks);
+        Assert.Equal("v1", chunk.Source.Version);
+        Assert.Equal("A short guide.", chunk.Text);
     }
 
     /// <summary>

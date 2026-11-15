@@ -14,7 +14,8 @@ public static class KnowledgeServiceCollectionExtensions
     /// Adds the knowledge runtime over a provider. The provider is registered as its concrete type only, as a
     /// singleton and only if the host or the provider's own registration has not registered it already, so the
     /// two can be called in either order. <see cref="IKnowledgeStore"/> resolves per scope to a wrapper that runs
-    /// each call over the provider in a telemetry activity, and <see cref="IDocumentIngester"/> is scoped. The
+    /// each call over the provider in a telemetry activity, and <see cref="IDocumentIngester"/> and
+    /// <see cref="IRetrievalPipeline"/> are scoped. The
     /// host supplies <see cref="IEmbeddingGenerator"/>, <see cref="ITelemetryActivityFactory"/> and logging;
     /// <see cref="TimeProvider.System"/> is added unless the host registered a clock. The options are checked on
     /// first use.
@@ -40,6 +41,7 @@ public static class KnowledgeServiceCollectionExtensions
             provider.GetRequiredService<ITelemetryActivityFactory>(),
             provider.GetRequiredService<ILogger<ObservedKnowledgeStore>>()));
         services.AddScoped<IDocumentIngester, DocumentIngester>();
+        services.AddScoped<IRetrievalPipeline, RetrievalPipeline>();
         return services;
     }
 }

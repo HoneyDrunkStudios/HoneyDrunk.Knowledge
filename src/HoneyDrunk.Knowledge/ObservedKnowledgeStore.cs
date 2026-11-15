@@ -7,8 +7,9 @@ namespace HoneyDrunk.Knowledge;
 
 /// <summary>
 /// The runtime's <see cref="IKnowledgeStore"/>: it wraps the host's provider and runs each call in one
-/// <c>knowledge.store</c> activity tagged with metadata only (invariant 147). A failure is logged by its
-/// exception type name and rethrown unchanged.
+/// <c>knowledge.store</c> activity tagged with metadata only (invariant 147). Only the caller's cancellation is
+/// tagged <c>cancelled</c>; any other failure, a provider's own timeout included, is tagged <c>error</c>, logged by
+/// its exception type name and rethrown unchanged.
 /// </summary>
 /// <param name="inner">The provider.</param>
 /// <param name="providerName">The provider's type name, for telemetry and logs.</param>
@@ -30,7 +31,7 @@ internal sealed class ObservedKnowledgeStore(
     {
         ArgumentNullException.ThrowIfNull(sourceId);
         using var activity = this.Start(KnowledgeTelemetry.GetOperation, sourceId);
-        var source = await this.RunAsync(activity, KnowledgeTelemetry.GetOperation, () => this.inner.GetSourceAsync(sourceId, cancellationToken)).ConfigureAwait(false);
+        var source = await this.RunAsync(activity, KnowledgeTelemetry.GetOperation, () => this.inner.GetSourceAsync(sourceId, cancellationToken), cancellationToken).ConfigureAwait(false);
         activity?.SetTag(KnowledgeTelemetry.ResultCount, source is null ? 0 : 1);
         if (source is not null)
         {
@@ -49,7 +50,7 @@ internal sealed class ObservedKnowledgeStore(
         using var activity = this.Start(KnowledgeTelemetry.StoreVersionOperation, source.SourceId);
         activity?.SetTag(KnowledgeTelemetry.EmbeddingModelId, source.EmbeddingModelId);
         activity?.SetTag(KnowledgeTelemetry.ChunkCount, chunks.Count);
-        var outcome = await this.RunAsync(activity, KnowledgeTelemetry.StoreVersionOperation, () => this.inner.StoreVersionAsync(source, chunks, cancellationToken)).ConfigureAwait(false);
+        var outcome = await this.RunAsync(activity, KnowledgeTelemetry.StoreVersionOperation, () => this.inner.StoreVersionAsync(source, chunks, cancellationToken), cancellationToken).ConfigureAwait(false);
         activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.OutcomeName(outcome));
         return outcome;
     }
@@ -61,7 +62,7 @@ internal sealed class ObservedKnowledgeStore(
         using var activity = this.Start(KnowledgeTelemetry.SearchOperation);
         activity?.SetTag(KnowledgeTelemetry.SourceCount, query.SourceIds.Count);
         activity?.SetTag(KnowledgeTelemetry.EmbeddingModelId, query.Query.ModelId);
-        var result = await this.RunAsync(activity, KnowledgeTelemetry.SearchOperation, () => this.inner.SearchAsync(query, cancellationToken)).ConfigureAwait(false);
+        var result = await this.RunAsync(activity, KnowledgeTelemetry.SearchOperation, () => this.inner.SearchAsync(query, cancellationToken), cancellationToken).ConfigureAwait(false);
         activity?.SetTag(KnowledgeTelemetry.ResultCount, result.Chunks.Count);
         activity?.SetTag(KnowledgeTelemetry.MismatchedCount, result.MismatchedSourceIds.Count);
         activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Success);
@@ -73,7 +74,7 @@ internal sealed class ObservedKnowledgeStore(
     {
         ArgumentNullException.ThrowIfNull(sourceId);
         using var activity = this.Start(KnowledgeTelemetry.DeleteOperation, sourceId);
-        var deleted = await this.RunAsync(activity, KnowledgeTelemetry.DeleteOperation, () => this.inner.DeleteSourceAsync(sourceId, cancellationToken)).ConfigureAwait(false);
+        var deleted = await this.RunAsync(activity, KnowledgeTelemetry.DeleteOperation, () => this.inner.DeleteSourceAsync(sourceId, cancellationToken), cancellationToken).ConfigureAwait(false);
         activity?.SetTag(KnowledgeTelemetry.ResultCount, deleted ? 1 : 0);
         activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Success);
         return deleted;
@@ -82,21 +83,21 @@ internal sealed class ObservedKnowledgeStore(
     private Activity? Start(string operation, string? sourceId = null) =>
         KnowledgeTelemetry.Start(this.telemetry, KnowledgeTelemetry.StoreActivity, operation, this.providerName, sourceId);
 
-    private async Task<T> RunAsync<T>(Activity? activity, string operation, Func<Task<T>> call)
+    private async Task<T> RunAsync<T>(Activity? activity, string operation, Func<Task<T>> call, CancellationToken cancellationToken)
     {
         try
         {
             return await call().ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
-        {
-            activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Cancelled);
-            throw;
-        }
-        catch (Exception error) when (error is not OperationCanceledException)
+        catch (Exception error) when (!KnowledgeTelemetry.IsCallerCancellation(error, cancellationToken))
         {
             activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Error);
             KnowledgeLog.StoreOperationFailed(this.logger, operation, this.providerName, error.GetType().Name);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            activity?.SetTag(KnowledgeTelemetry.Outcome, KnowledgeTelemetry.Cancelled);
             throw;
         }
     }

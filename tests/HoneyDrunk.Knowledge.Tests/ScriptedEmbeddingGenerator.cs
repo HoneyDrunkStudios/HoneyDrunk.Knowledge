@@ -54,6 +54,12 @@ internal sealed class ScriptedEmbeddingGenerator(string modelId) : IEmbeddingGen
     /// <summary>Gets the call that throws instead of answering, if any.</summary>
     public int? FailOnCall { get; init; }
 
+    /// <summary>
+    /// Gets what the failing call throws, made when the call fails: an <see cref="InvalidOperationException"/>
+    /// unless a test says otherwise (a timeout, or a cancellation it causes).
+    /// </summary>
+    public Func<Exception>? FailWith { get; init; }
+
     /// <summary>Gets the exception the failing call threw, once it has.</summary>
     public Exception? Failure { get; private set; }
 
@@ -81,7 +87,7 @@ internal sealed class ScriptedEmbeddingGenerator(string modelId) : IEmbeddingGen
 
         if (call == this.FailOnCall)
         {
-            var failure = new InvalidOperationException("The scripted generator failed.");
+            var failure = this.FailWith?.Invoke() ?? new InvalidOperationException("The scripted generator failed.");
             this.Failure = failure;
             throw failure;
         }
