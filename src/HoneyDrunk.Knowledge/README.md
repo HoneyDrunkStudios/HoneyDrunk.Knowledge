@@ -25,6 +25,8 @@ The options are checked when the runtime first reads them (`OptionsValidationExc
 
 A version already current under the configured model is `Unchanged`, with no generator call. Otherwise the text is split into passages and embedded in batches. Each batch must return one embedding per passage, in order, for the passage sent, from the configured model, with vectors of 1 to 8,192 finite values, all of one length; otherwise the ingest throws `InvalidOperationException` and stores nothing. A new version is stamped with the clock's time and supersedes the current one.
 
+Exceptions thrown by the embedding generator or the store provider pass through unchanged, neither wrapped nor added to. Their messages are written by those components; only the runtime's own messages are guaranteed to hold no document text, passage text, query or vector.
+
 ## Chunking
 
 Chunking takes plain text or Markdown, treated alike. Paragraphs are packed up to 1,200 characters; a longer paragraph is cut at the last space. A document holds at most 1,024 passages. HTML is not parsed here: pass text.

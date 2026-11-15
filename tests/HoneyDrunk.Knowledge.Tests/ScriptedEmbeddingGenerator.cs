@@ -54,6 +54,9 @@ internal sealed class ScriptedEmbeddingGenerator(string modelId) : IEmbeddingGen
     /// <summary>Gets the call that throws instead of answering, if any.</summary>
     public int? FailOnCall { get; init; }
 
+    /// <summary>Gets the exception the failing call threw, once it has.</summary>
+    public Exception? Failure { get; private set; }
+
     /// <summary>Gets a rewrite of what a call returns: the call number and the embeddings, to the embeddings returned.</summary>
     public Func<int, IReadOnlyList<Embedding>, IReadOnlyList<Embedding>>? Rewrite { get; init; }
 
@@ -78,7 +81,9 @@ internal sealed class ScriptedEmbeddingGenerator(string modelId) : IEmbeddingGen
 
         if (call == this.FailOnCall)
         {
-            throw new InvalidOperationException("The scripted generator failed.");
+            var failure = new InvalidOperationException("The scripted generator failed.");
+            this.Failure = failure;
+            throw failure;
         }
 
         var embeddings = await this.inner.GenerateAsync(texts, options, cancellationToken).ConfigureAwait(false);

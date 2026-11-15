@@ -11,7 +11,8 @@ namespace HoneyDrunk.Knowledge;
 /// <see cref="IngestOutcome.Unchanged"/> with no embedding call. Otherwise the text is split into passages,
 /// each batch of passages is embedded through <see cref="IEmbeddingGenerator"/> and checked, and the version
 /// is stored only when every batch passed (ADR-0021 D5). Each call runs in one <c>knowledge.ingest</c>
-/// activity tagged with metadata only (invariant 147).
+/// activity tagged with metadata only (invariant 147). Exceptions from the generator and the store pass through
+/// unchanged; their messages are theirs.
 /// </summary>
 /// <param name="store">The store.</param>
 /// <param name="generator">The host's embedding generator.</param>
@@ -81,19 +82,21 @@ internal sealed class DocumentIngester(
             throw new InvalidOperationException("Each embedding must be for the passage sent at its place, in order.");
         }
 
-        var expected = dimensions;
+        // The first batch's first vector sets the length every vector of the version is held to; a missing or
+        // empty first vector gives 0 and fails the check below.
+        var expected = dimensions != 0 ? dimensions : returned[0].Vector?.Count ?? 0;
         if (!returned.All(embedding => IsVector(embedding.Vector, expected)))
         {
             throw new InvalidOperationException("Every vector must hold 1 to 8,192 finite values, all of one length.");
         }
 
-        dimensions = returned[0].Vector.Count;
+        dimensions = expected;
     }
 
-    // A vector of 1 to 8,192 finite values, of the given length once a first vector set it (0 until then).
+    // A vector of 1 to 8,192 finite values, of exactly the given length.
     private static bool IsVector(IReadOnlyList<float>? vector, int dimensions) =>
         vector is { Count: >= 1 and <= KnowledgeLimits.MaxVectorDimensions }
-        && (dimensions == 0 || vector.Count == dimensions)
+        && vector.Count == dimensions
         && vector.All(float.IsFinite);
 
     private async Task<IngestResult> IngestCheckedAsync(KnowledgeDocument document, KnowledgeOptions settings, CancellationToken cancellationToken)

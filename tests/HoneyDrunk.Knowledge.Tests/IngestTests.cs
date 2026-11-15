@@ -189,27 +189,37 @@ public sealed class IngestTests
         }
     }
 
-    /// <summary>Vectors of mixed length, or outside 1 to 8,192 finite values, fail the ingest.</summary>
+    /// <summary>
+    /// Vectors of mixed length, or outside 1 to 8,192 finite values, fail the ingest before any store call. The
+    /// <c>within-the-first-batch</c> case rewrites the first batch of the version (call 2), whose vectors set the
+    /// length that later batches are held to; the other cases rewrite its second batch (call 3).
+    /// </summary>
     /// <param name="kind">What the vectors get wrong.</param>
     /// <returns>A task.</returns>
     [Theory]
     [InlineData("across-batches")]
     [InlineData("within-a-batch")]
+    [InlineData("within-the-first-batch")]
     [InlineData("not-finite")]
     [InlineData("no-values")]
     [InlineData("too-many-values")]
     public async Task Vectors_of_mixed_length_store_nothing(string kind)
     {
+        var rewritten = kind == "within-the-first-batch" ? 2 : 3;
         using var rig = new Rig(
-            new ScriptedEmbeddingGenerator(Model) { Rewrite = (call, embeddings) => call == 3 ? WrongVectors(kind, embeddings) : embeddings },
+            new ScriptedEmbeddingGenerator(Model) { Rewrite = (call, embeddings) => call == rewritten ? WrongVectors(kind, embeddings) : embeddings },
             batchSize: 2);
 
-        var error = await IngestSecondVersionAsync(rig);
+        var error = await IngestSecondVersionAsync(rig, rewritten);
 
         await AssertFirstVersionStaysAsync(rig, error);
+        Assert.Contains("vector", error.Message, StringComparison.Ordinal);
     }
 
-    /// <summary>A generator that throws stores nothing, and the error that reaches the caller holds no text.</summary>
+    /// <summary>
+    /// A generator that throws stores nothing, and its exception reaches the caller as the same instance: the runtime
+    /// neither wraps it nor adds text to it. What a generator writes in its own message is the generator's.
+    /// </summary>
     /// <returns>A task.</returns>
     [Fact]
     public async Task A_failing_generator_stores_nothing_and_the_error_holds_no_text()
@@ -218,6 +228,7 @@ public sealed class IngestTests
 
         var error = await IngestSecondVersionAsync(rig);
 
+        Assert.Same(rig.Generator.Failure, error);
         Assert.Equal("The scripted generator failed.", error.Message);
         await AssertFirstVersionStaysAsync(rig, error);
         Assert.Equal("error", rig.Telemetry.Named("knowledge.ingest")[^1].GetTagItem("knowledge.outcome"));
@@ -304,13 +315,14 @@ public sealed class IngestTests
         Assert.Equal(new[] { 3 }, rig.Generator.BatchSizes);
     }
 
-    private static async Task<Exception> IngestSecondVersionAsync(Rig rig)
+    // Ingests v1 (call 1), then a four-passage v2 in batches of two (calls 2 and 3) that fails at the given call.
+    private static async Task<Exception> IngestSecondVersionAsync(Rig rig, int failingCall = 3)
     {
         await rig.IngestAsync(Document("v1", 1));
         Assert.Equal(1, rig.Generator.Calls);
         rig.Time.Advance(TimeSpan.FromDays(1));
         var error = await Assert.ThrowsAnyAsync<Exception>(() => rig.IngestAsync(Document("v2", 4)));
-        Assert.Equal(3, rig.Generator.Calls);
+        Assert.Equal(failingCall, rig.Generator.Calls);
         return error;
     }
 
@@ -358,6 +370,9 @@ public sealed class IngestTests
     {
         "across-batches" => [.. embeddings.Select(embedding => embedding with { Vector = Values(4, 0.5f) })],
         "within-a-batch" => [embeddings[0] with { Vector = Values(4, 0.5f) }, .. embeddings.Skip(1)],
+
+        // The first vector keeps its length, so a length taken from it alone would let later batches pass.
+        "within-the-first-batch" => [embeddings[0], embeddings[1] with { Vector = Values(4, 0.5f) }, .. embeddings.Skip(2)],
         "not-finite" => [embeddings[0] with { Vector = [float.NaN, .. embeddings[0].Vector.Skip(1)] }, .. embeddings.Skip(1)],
         "no-values" => [.. embeddings.Select(embedding => embedding with { Vector = [] })],
         _ => [.. embeddings.Select(embedding => embedding with { Vector = Values(KnowledgeLimits.MaxVectorDimensions + 1, 0.5f) })],
