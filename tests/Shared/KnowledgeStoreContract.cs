@@ -104,6 +104,19 @@ public abstract class KnowledgeStoreContract
         Assert.Empty(found.MismatchedSourceIds);
     }
 
+    /// <summary>Equal scores in one source come back in position order.</summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Equal_scores_in_one_source_come_back_in_position_order()
+    {
+        var store = this.CreateStore();
+        await store.StoreVersionAsync(Source(), Chunks("a", ModelA, [1f, 0f], [1f, 0f], [1f, 0f], [0f, 1f]));
+
+        var found = await store.SearchAsync(Query([1f, 0f], ["docs:intro"]));
+
+        Assert.Equal([0, 1, 2, 3], found.Chunks.Select(chunk => chunk.Position));
+    }
+
     /// <summary>Identical vectors score one, never more, however the arithmetic rounds.</summary>
     /// <returns>A task.</returns>
     [Fact]
@@ -204,9 +217,8 @@ public abstract class KnowledgeStoreContract
         var stored = await store.SearchAsync(Query([1f, 0f], ["docs:intro"]));
         var queried = await store.SearchAsync(Query([0f, 0f], ["docs:intro"]));
 
-        Assert.Equal(["a 0=0", "a 1=1"], stored.Chunks.OrderBy(chunk => chunk.Position).Select(chunk => $"{chunk.Text}={chunk.Score}"));
-        Assert.All(queried.Chunks, chunk => Assert.Equal(0d, chunk.Score));
-        Assert.Equal(2, queried.Chunks.Count);
+        Assert.Equal(["a 1=1", "a 0=0"], stored.Chunks.Select(chunk => $"{chunk.Text}={chunk.Score}"));
+        Assert.Equal(["a 0=0", "a 1=0"], queried.Chunks.Select(chunk => $"{chunk.Text}={chunk.Score}"));
     }
 
     /// <summary>A chunk set that breaks a rule is refused, naming <c>chunks</c>, and nothing is stored.</summary>
@@ -281,6 +293,7 @@ public abstract class KnowledgeStoreContract
         })));
 
         Assert.Equal(400, results.Sum(list => list.Count));
+        Assert.Equal(1, results.SelectMany(list => list).Count(outcome => outcome == IngestOutcome.Added));
         var current = (await stores[0].GetSourceAsync("docs:intro"))!;
         Assert.Contains(current.Version, versions);
         var found = await stores[1].SearchAsync(Query([1f, 0f], ["docs:intro"]));

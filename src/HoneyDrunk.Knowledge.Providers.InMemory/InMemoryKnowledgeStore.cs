@@ -67,19 +67,18 @@ public sealed class InMemoryKnowledgeStore : IKnowledgeStore
 
         lock (this.gate)
         {
-            foreach (var sourceId in query.SourceIds)
+            var named = query.SourceIds
+                .Where(sourceId => this.sources.ContainsKey(sourceId))
+                .Select(sourceId => (sourceId: sourceId, stored: this.sources[sourceId]))
+                .ToList();
+            mismatched.AddRange(named
+                .Where(entry => !KnowledgeStoreRules.CanScore(entry.stored.Source, entry.stored.Vectors[0].Length, query))
+                .Select(entry => entry.sourceId));
+            var scorable = named
+                .Where(entry => KnowledgeStoreRules.CanScore(entry.stored.Source, entry.stored.Vectors[0].Length, query))
+                .Select(entry => entry.stored);
+            foreach (var stored in scorable)
             {
-                if (!this.sources.TryGetValue(sourceId, out var stored))
-                {
-                    continue;
-                }
-
-                if (!KnowledgeStoreRules.CanScore(stored.Source, stored.Vectors[0].Length, query))
-                {
-                    mismatched.Add(sourceId);
-                    continue;
-                }
-
                 for (var position = 0; position < stored.Vectors.Length; position++)
                 {
                     var score = KnowledgeStoreRules.Cosine(queryVector, stored.Vectors[position]);
