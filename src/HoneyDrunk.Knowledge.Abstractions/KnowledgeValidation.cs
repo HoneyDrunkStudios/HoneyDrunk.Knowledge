@@ -18,7 +18,7 @@ internal static partial class KnowledgeValidation
         ArgumentNullException.ThrowIfNull(sourceId, paramName);
         return SourceIdPattern().IsMatch(sourceId)
             ? sourceId
-            : throw new ArgumentException("A source id must be 1 to 128 characters of a-z, 0-9, '.', '_', ':' or '-', starting with a letter or digit.", paramName);
+            : throw new ArgumentException("A source id must be 1 to 128 characters of a-z, 0-9, '.', '_', ':' or '-', starting with a-z or 0-9.", paramName);
     }
 
     /// <summary>Checks an origin: 1 to 2,048 characters with no control character.</summary>
@@ -56,6 +56,18 @@ internal static partial class KnowledgeValidation
             ? modelId
             : throw new ArgumentException("An embedding model id must be 1 to 200 characters with no control character.", paramName);
     }
+
+    /// <summary>
+    /// Checks a source's instant: at or after 1970-01-01T00:00:00Z, compared as an instant whatever its offset. Every
+    /// provider can then store it (a store may derive time-ordered ids from it).
+    /// </summary>
+    /// <param name="lastUpdatedAt">The instant.</param>
+    /// <param name="paramName">The parameter name for the exception.</param>
+    /// <returns>The instant, unchanged.</returns>
+    internal static DateTimeOffset LastUpdatedAt(DateTimeOffset lastUpdatedAt, string paramName) =>
+        lastUpdatedAt >= DateTimeOffset.UnixEpoch
+            ? lastUpdatedAt
+            : throw new ArgumentOutOfRangeException(paramName, "A source must be dated at or after 1970-01-01T00:00:00Z.");
 
     /// <summary>Checks document text: 1 to 524,288 characters, not white space only, kept verbatim.</summary>
     /// <param name="text">The text.</param>
@@ -238,7 +250,7 @@ internal static partial class KnowledgeValidation
         var copy = sourceIds.ToArray();
         if (!copy.All(id => id is not null && SourceIdPattern().IsMatch(id)))
         {
-            throw new ArgumentException("Each source id must be 1 to 128 characters of a-z, 0-9, '.', '_', ':' or '-', starting with a letter or digit.", paramName);
+            throw new ArgumentException("Each source id must be 1 to 128 characters of a-z, 0-9, '.', '_', ':' or '-', starting with a-z or 0-9.", paramName);
         }
 
         return copy.Distinct(StringComparer.Ordinal).Count() == copy.Length

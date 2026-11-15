@@ -94,6 +94,35 @@ public sealed class RecordTests
         }
     }
 
+    /// <summary>
+    /// A source is dated at or after 1970-01-01T00:00:00Z, compared as an instant whatever its offset. An earlier
+    /// instant is refused by the constructor and by <c>with</c>, naming the parameter and never echoing the value.
+    /// </summary>
+    [Fact]
+    public void Sources_are_dated_at_or_after_the_unix_epoch()
+    {
+        Assert.Equal(DateTimeOffset.UnixEpoch, new KnowledgeSource("docs:intro", Origin, "v1", DateTimeOffset.UnixEpoch, Model).LastUpdatedAt);
+        var epochOneHourEast = new DateTimeOffset(1970, 1, 1, 1, 0, 0, TimeSpan.FromHours(1));
+        Assert.Equal(epochOneHourEast, new KnowledgeSource("docs:intro", Origin, "v1", epochOneHourEast, Model).LastUpdatedAt);
+        Assert.Equal(At.AddDays(1), (Source("docs:intro") with { LastUpdatedAt = At.AddDays(1) }).LastUpdatedAt);
+
+        DateTimeOffset[] refused =
+        [
+            DateTimeOffset.UnixEpoch.AddTicks(-1),
+            new DateTimeOffset(1970, 1, 1, 0, 30, 0, TimeSpan.FromHours(1)),
+            new DateTimeOffset(1969, 7, 20, 20, 17, 0, TimeSpan.Zero),
+            DateTimeOffset.MinValue,
+        ];
+        foreach (var at in refused)
+        {
+            var error = Assert.Throws<ArgumentOutOfRangeException>(() => new KnowledgeSource("docs:intro", Origin, "v1", at, Model));
+            Assert.Equal("LastUpdatedAt", error.ParamName);
+            Assert.Null(error.ActualValue);
+            Assert.StartsWith("A source must be dated at or after 1970-01-01T00:00:00Z. (Parameter", error.Message, StringComparison.Ordinal);
+            Assert.Equal("LastUpdatedAt", Assert.Throws<ArgumentOutOfRangeException>(() => Source("docs:intro") with { LastUpdatedAt = at }).ParamName);
+        }
+    }
+
     /// <summary>Document text is 1 to 524,288 characters, not white space only, and kept verbatim.</summary>
     [Fact]
     public void Document_text_is_1_to_524288_characters_and_not_blank()
@@ -349,7 +378,7 @@ public sealed class RecordTests
 
     private static string[] Ids(int count) => Enumerable.Range(0, count).Select(i => "docs:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray();
 
-    // "len:N" is N letters a; "char:XX" is the one character with that hexadecimal code.
+    // "len:N" is N copies of 'a'; "char:XX" is the one character with that hexadecimal code.
     private static string Expand(string token)
     {
         if (token.StartsWith("len:", StringComparison.Ordinal))

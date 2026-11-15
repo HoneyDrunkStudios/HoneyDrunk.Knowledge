@@ -3,7 +3,7 @@ namespace HoneyDrunk.Knowledge.Abstractions;
 /// <summary>The bounds every Knowledge record checks in its constructor.</summary>
 public static class KnowledgeLimits
 {
-    /// <summary>The longest source id: 128 characters of <c>a-z</c>, <c>0-9</c>, <c>.</c>, <c>_</c>, <c>:</c> or <c>-</c>, starting with a letter or digit.</summary>
+    /// <summary>The longest source id: 128 characters of <c>a-z</c>, <c>0-9</c>, <c>.</c>, <c>_</c>, <c>:</c> or <c>-</c>, starting with <c>a-z</c> or <c>0-9</c>.</summary>
     public const int MaxSourceIdLength = 128;
 
     /// <summary>The longest origin, in characters.</summary>

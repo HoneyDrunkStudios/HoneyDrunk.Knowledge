@@ -322,6 +322,28 @@ public abstract class KnowledgeStoreContract
         Assert.Equal(text, Assert.Single(found.Chunks).Text);
     }
 
+    /// <summary>
+    /// Every provider stores and reads back a source dated at the earliest instant a source may carry,
+    /// 1970-01-01T00:00:00Z; an earlier instant cannot reach a store, because the source refuses it.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task A_source_dated_at_the_unix_epoch_is_stored_and_an_earlier_one_is_refused()
+    {
+        var store = this.CreateStore();
+        var epoch = Source(updatedAfter: DateTimeOffset.UnixEpoch - Start);
+        Assert.Equal(DateTimeOffset.UnixEpoch, epoch.LastUpdatedAt);
+
+        Assert.Equal(IngestOutcome.Added, await store.StoreVersionAsync(epoch, Chunks("a", ModelA, [1f, 0f])));
+
+        AssertSameSource(epoch, (await store.GetSourceAsync("docs:intro"))!);
+        var refused = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new KnowledgeSource("docs:intro", "https://example.test/guide", "v2", DateTimeOffset.UnixEpoch.AddTicks(-1), ModelA));
+        Assert.Equal("LastUpdatedAt", refused.ParamName);
+        Assert.Equal("LastUpdatedAt", Assert.Throws<ArgumentOutOfRangeException>(() => epoch with { LastUpdatedAt = DateTimeOffset.UnixEpoch.AddTicks(-1) }).ParamName);
+        AssertSameSource(epoch, (await store.GetSourceAsync("docs:intro"))!);
+    }
+
     /// <summary>A cancelled token is observed before any work.</summary>
     /// <returns>A task.</returns>
     [Fact]
