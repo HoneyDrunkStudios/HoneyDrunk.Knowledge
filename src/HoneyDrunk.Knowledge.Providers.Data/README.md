@@ -24,6 +24,17 @@ Two tables in a schema of their own, `knowledge`.
 - A vector is stored as little-endian IEEE 754 single-precision floats, packed, and read back bit for bit.
 - The package ships no migrations. `Database.EnsureCreated()` is for tests only.
 
+### SQL Server table scripts
+
+The package carries the SQL Server scripts in its `sql/` folder (nothing is added to your build): `knowledge.sql` (the schema), `knowledge.SourceVersion.sql` and `knowledge.Chunk.sql`. Copy the three files unchanged into your database project and deploy them in that order. Each table file holds every key, check, index and column description:
+
+- `Id`, `SourceId`, `Version`, `EmbeddingModelId` and `Chunk.SourceVersionId` use the binary collation `Latin1_General_100_BIN2`, so they compare by exact value; `Origin` and `Text` use the database's own.
+- Instants are `datetimeoffset(7)` in UTC. `SupersededAt` is never before `CreatedAt` (`CK_SourceVersion_SupersededAt`): when a superseding host's clock runs behind the one that stored the current version, the provider holds `SupersededAt` at that version's `CreatedAt`.
+- The checks refuse what the contract refuses: an id that is not 32 lower-case hexadecimal digits, a source id outside `a-z`, `0-9`, `.`, `_`, `:`, `-`, an empty origin or passage, more than 8,192 dimensions or 1,024 chunks, a position outside 0 to 1,023, and a vector that is not 4 to 32,768 bytes in whole floats.
+- `UQ_SourceVersion_SourceId_Current` (unique, filtered to `SupersededAt IS NULL`) allows one current version per source; `IX_SourceVersion_SourceId` serves deleting a source; `PK_Chunk` on `(SourceVersionId, Position)` serves the foreign key and every chunk read. `FK_Chunk_SourceVersion` cascades.
+
+Departures from the usual table rules, each with its reason: `SourceVersion.Id` is text, not `uniqueidentifier`, so one mapping works on SQLite and SQL Server; `SourceId` names a source with no table of its own, because a source is the set of its versions; `Chunk` has no `Id`, because its rows are parts of one version and are only read through it; `SourceVersion` has no `ModifiedAt` or `RowVersion`, because its one update is a conditional statement guarded by the filtered unique index.
+
 ## What it guarantees
 
 - **One current version per source.** A unique index filtered to `SupersededAt IS NULL` allows one. Storing a version is one transaction: read the current version, then write nothing (`Unchanged`), or supersede it with a conditional update, delete its chunks and insert the new version with its chunks. A writer whose read was overtaken by another writer's commit loses at the database (at the conditional update or at the filtered index), re-reads once, and answers as the second writer would. Each loss means another writer stored a version; a call that loses 100 times in a row stores nothing and throws `InvalidOperationException`.
@@ -42,3 +53,12 @@ Two tables in a schema of their own, `knowledge`.
 ## Tests
 
 `dotnet test HoneyDrunk.Knowledge.slnx -c Release` runs the contract on SQLite and needs no database.
+
+The SQL Server tests are not in the solution. They deploy the three scripts to a new database on the server named by `HONEYDRUNK_KNOWLEDGE_TEST_SQLSERVER` (a connection string with no database), run the same contract and the schema checks, and drop the database afterwards:
+
+```bash
+sqllocaldb create KnowledgeProviderTests -s
+HONEYDRUNK_KNOWLEDGE_TEST_SQLSERVER='Server=(localdb)\KnowledgeProviderTests;Integrated Security=true;Encrypt=false' dotnet test tests/HoneyDrunk.Knowledge.Providers.Data.SqlServerTests -c Release
+```
+
+The `SQL Server (Data provider)` workflow runs them on pull requests that touch the provider; it is not a required check.

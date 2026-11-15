@@ -22,5 +22,7 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="CHANGELOG.md" Pack="true" PackagePath="\" />
+    <!-- The SQL Server table scripts, in a plain folder: nothing is added to a consumer's build. -->
+    <None Include="Sql\*.sql" Pack="true" PackagePath="sql\" />
   </ItemGroup>
 </Project>

@@ -13,3 +13,4 @@
 ### Schema
 
 - First version of the `knowledge` schema: `knowledge.SourceVersion` (`Id`, `SourceId`, `Origin`, `Version`, `EmbeddingModelId`, `Dimensions`, `ChunkCount`, `CreatedAt`, `SupersededAt`) and `knowledge.Chunk` (`SourceVersionId`, `Position`, `Text`, `Vector`, `CreatedAt`). A superseded version keeps its row and loses its chunks.
+- The SQL Server table scripts ship in the package's `sql/` folder: `knowledge.sql`, `knowledge.SourceVersion.sql` and `knowledge.Chunk.sql`, with every named key, check, index and column description, binary collations on the compared text, and `datetimeoffset(7)` instants.
