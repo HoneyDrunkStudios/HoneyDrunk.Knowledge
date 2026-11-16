@@ -272,6 +272,38 @@ public abstract class KnowledgeStoreContract
         Assert.Equal(IngestOutcome.Added, await store.StoreVersionAsync(Source(version: "v1"), Chunks("c", ModelA, [1f, 0f])));
     }
 
+    /// <summary>
+    /// An id outside the source-id grammar names no stored source, even one a database compares equal to it (SQL
+    /// Server ignores trailing spaces, even under a binary collation): a get answers null, a delete answers false,
+    /// and every version and chunk of the stored source is kept.
+    /// </summary>
+    /// <param name="sourceId">An id that differs from <c>docs:intro</c> and breaks the grammar.</param>
+    /// <returns>A task.</returns>
+    [Theory]
+    [InlineData("docs:intro ")]
+    [InlineData("docs:intro   ")]
+    [InlineData(" docs:intro")]
+    [InlineData("DOCS:INTRO")]
+    [InlineData("Docs:intro")]
+    [InlineData("docs:intro\t")]
+    [InlineData("docs:intrö")]
+    [InlineData("")]
+    public async Task An_id_outside_the_grammar_names_no_source_and_deletes_nothing(string sourceId)
+    {
+        var store = this.CreateStore();
+        await store.StoreVersionAsync(Source(version: "v1"), Chunks("old", ModelA, [1f, 0f]));
+        var current = Source(version: "v2", updatedAfter: TimeSpan.FromHours(1));
+        await store.StoreVersionAsync(current, Chunks("a", ModelA, [1f, 0f], [0f, 1f]));
+
+        Assert.Null(await store.GetSourceAsync(sourceId));
+        Assert.False(await store.DeleteSourceAsync(sourceId));
+
+        AssertSameSource(current, (await store.GetSourceAsync("docs:intro"))!);
+        var found = await store.SearchAsync(Query([1f, 0f], ["docs:intro"]));
+        Assert.Equal(["a 0", "a 1"], found.Chunks.Select(chunk => chunk.Text));
+        Assert.True(await store.DeleteSourceAsync("docs:intro"));
+    }
+
     /// <summary>Twenty writers of twenty versions leave exactly one current version whole.</summary>
     /// <returns>A task.</returns>
     [Fact]

@@ -57,11 +57,77 @@ public sealed class DataKnowledgeStoreTests : KnowledgeStoreContract, IDisposabl
         Assert.DoesNotContain(log.Reads, read => read.Command.Contains("\"Chunk\"", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A get or a delete of an id outside the source-id grammar is answered without sending any command to the
+    /// database; a well-formed id is still looked up.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task An_id_outside_the_grammar_sends_no_command()
+    {
+        var commands = new CommandCount();
+        var store = this.database.CreateStore(commands);
+        await store.StoreVersionAsync(Source(), Chunks("a", ModelA, [1f, 0f]));
+        commands.Reset();
+
+        Assert.Null(await store.GetSourceAsync("docs:intro "));
+        Assert.False(await store.DeleteSourceAsync("docs:intro "));
+        Assert.Null(await store.GetSourceAsync(new string('a', 129)));
+        Assert.False(await store.DeleteSourceAsync("DOCS:INTRO"));
+
+        Assert.Equal(0, commands.Count);
+        Assert.NotNull(await store.GetSourceAsync("docs:intro"));
+        Assert.NotEqual(0, commands.Count);
+    }
+
+    /// <summary>The shared source-id check accepts exactly the ids a <see cref="KnowledgeSource"/> accepts.</summary>
+    [Fact]
+    public void The_store_id_check_matches_the_source_record()
+    {
+        var single = Enumerable.Range(0, 0x250).Select(code => ((char)code).ToString());
+        var afterLetter = Enumerable.Range(0, 0x250).Select(code => "a" + (char)code);
+        string[] lengths = [string.Empty, new string('a', 127), new string('a', 128), new string('a', 129), "docs:intro", "docs:intro ", " docs:intro"];
+
+        foreach (var candidate in single.Concat(afterLetter).Concat(lengths))
+        {
+            Assert.Equal(AcceptedBySource(candidate), KnowledgeStoreRules.IsSourceId(candidate));
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose() => this.database.Dispose();
 
     /// <inheritdoc />
     protected override IKnowledgeStore CreateStore() => this.database.CreateStore();
+
+    private static bool AcceptedBySource(string sourceId)
+    {
+        try
+        {
+            _ = Source(sourceId);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Counts every command a context creates, of any kind.</summary>
+    private sealed class CommandCount : DbCommandInterceptor
+    {
+        private int count;
+
+        public int Count => Volatile.Read(ref this.count);
+
+        public void Reset() => Interlocked.Exchange(ref this.count, 0);
+
+        public override DbCommand CommandCreated(CommandEndEventData eventData, DbCommand result)
+        {
+            Interlocked.Increment(ref this.count);
+            return result;
+        }
+    }
 
     /// <summary>Records each query a context runs and how many rows its reader returned.</summary>
     private sealed class ReadLog : DbCommandInterceptor

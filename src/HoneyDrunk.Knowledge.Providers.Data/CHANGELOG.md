@@ -9,6 +9,7 @@
 - No exception from a failed write or delete carries an entity: a `DbUpdateException` at any depth (for example inside a retrying strategy's `RetryLimitExceededException`) is rebuilt without entities, inside wrappers of the same types and messages.
 - Writes run under the database provider's execution strategy; a retry after a lost commit reply finds the version stored and answers `Unchanged`.
 - Search streams versions, positions and vectors only, keeps the best results in memory and loads text for those alone.
+- A get or a delete of an id outside the source-id grammar answers `null` or `false` without a query, so SQL Server's comparison, which ignores trailing spaces even under the binary collation, never matches it to a different stored source.
 - A context configured with sensitive data logging is refused, so passages and vectors cannot reach logs through Entity Framework.
 
 ### Schema

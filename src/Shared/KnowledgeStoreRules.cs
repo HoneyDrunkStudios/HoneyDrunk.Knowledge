@@ -3,12 +3,27 @@ using HoneyDrunk.Knowledge.Abstractions;
 namespace HoneyDrunk.Knowledge.Providers;
 
 /// <summary>
-/// The store rules every provider shares: the chunk-set checks, the ingest decision, which sources a query may
-/// score, the cosine score and the result order. Each provider assembly links this one source file in, so the
-/// rules live in one place and add no public API. No message echoes text, a query or a vector (invariant 147).
+/// The store rules every provider shares: the source-id check for id-keyed calls, the chunk-set checks, the ingest
+/// decision, which sources a query may score, the cosine score and the result order. Each provider assembly links
+/// this one source file in, so the rules live in one place and add no public API. No message echoes text, a query
+/// or a vector (invariant 147).
 /// </summary>
 internal static class KnowledgeStoreRules
 {
+    /// <summary>
+    /// Tells whether a text can be a source id: 1 to 128 characters of <c>a-z</c>, <c>0-9</c>, <c>.</c>, <c>_</c>,
+    /// <c>:</c> or <c>-</c>, starting with <c>a-z</c> or <c>0-9</c>, the grammar <see cref="KnowledgeSource"/>
+    /// enforces on every stored id. A get or a delete answers an id that fails it as not found without reading
+    /// anything, so a database that pads, folds or converts strings when it compares them (SQL Server ignores
+    /// trailing spaces even under a binary collation) can never match it to a stored source.
+    /// </summary>
+    /// <param name="sourceId">The id a caller named.</param>
+    /// <returns>True when the id is well formed and may name a stored source.</returns>
+    internal static bool IsSourceId(string sourceId) =>
+        sourceId.Length is >= 1 and <= KnowledgeLimits.MaxSourceIdLength
+        && IsSourceIdStart(sourceId[0])
+        && sourceId.All(character => IsSourceIdStart(character) || character is '.' or '_' or ':' or '-');
+
     /// <summary>
     /// Checks a chunk set: at least 1 and at most 1,024 chunks, positions 0 to n-1 in order, one vector length,
     /// and every embedding made by the source's model.
@@ -148,4 +163,6 @@ internal static class KnowledgeStoreRules
     /// <returns>The ids in ordinal order.</returns>
     internal static string[] OrderMismatched(IEnumerable<string> sourceIds) =>
         [.. sourceIds.Order(StringComparer.Ordinal)];
+
+    private static bool IsSourceIdStart(char character) => character is (>= 'a' and <= 'z') or (>= '0' and <= '9');
 }

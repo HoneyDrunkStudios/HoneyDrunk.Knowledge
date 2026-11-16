@@ -18,6 +18,10 @@ public sealed class InMemoryKnowledgeStore : IKnowledgeStore
     {
         ArgumentNullException.ThrowIfNull(sourceId);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!KnowledgeStoreRules.IsSourceId(sourceId))
+        {
+            return Task.FromResult<KnowledgeSource?>(null);
+        }
 
         lock (this.gate)
         {
@@ -100,6 +104,10 @@ public sealed class InMemoryKnowledgeStore : IKnowledgeStore
     {
         ArgumentNullException.ThrowIfNull(sourceId);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!KnowledgeStoreRules.IsSourceId(sourceId))
+        {
+            return Task.FromResult(false);
+        }
 
         lock (this.gate)
         {

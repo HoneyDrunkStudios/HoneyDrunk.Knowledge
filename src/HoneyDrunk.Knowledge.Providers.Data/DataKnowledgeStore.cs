@@ -67,8 +67,10 @@ public sealed class DataKnowledgeStore : IKnowledgeStore
     }
 
     /// <summary>
-    /// An id longer than the column can hold names no stored source, and is answered without a query, so nothing
-    /// can match by truncation.
+    /// An id outside the source-id grammar names no stored source, and is answered without a query: SQL Server
+    /// compares strings with trailing spaces ignored, even under the binary collation, a longer id could match by
+    /// truncation, and a non-ASCII id is converted to the column's code page. Only a well-formed id reaches the
+    /// database.
     /// </summary>
-    private static bool FitsSourceId(string sourceId) => sourceId.Length is > 0 and <= KnowledgeLimits.MaxSourceIdLength;
+    private static bool FitsSourceId(string sourceId) => KnowledgeStoreRules.IsSourceId(sourceId);
 }
