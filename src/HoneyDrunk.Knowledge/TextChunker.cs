@@ -126,9 +126,8 @@ internal static class TextChunker
     private static IEnumerable<string> Paragraphs(string cleaned)
     {
         var lines = new List<string>();
-        foreach (var raw in cleaned.Split('\n'))
+        foreach (var line in cleaned.Split('\n').Select(raw => raw.TrimEnd()))
         {
-            var line = raw.TrimEnd();
             if (line.Length > 0)
             {
                 lines.Add(line);

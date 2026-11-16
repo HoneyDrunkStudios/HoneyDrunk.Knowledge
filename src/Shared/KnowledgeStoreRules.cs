@@ -107,7 +107,8 @@ internal static class KnowledgeStoreRules
             rightNorm += b * b;
         }
 
-        if (leftNorm == 0 || rightNorm == 0)
+        // A sum of squares is never negative, so "not above zero" is exactly "zero" here.
+        if (leftNorm <= 0 || rightNorm <= 0)
         {
             return 0;
         }

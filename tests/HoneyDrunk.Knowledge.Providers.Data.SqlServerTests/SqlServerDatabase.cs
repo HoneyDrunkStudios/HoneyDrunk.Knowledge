@@ -49,10 +49,11 @@ internal sealed class SqlServerDatabase : IDisposable
         try
         {
             using var context = this.CreateContext();
-            foreach (var batch in batches)
+
+            // ExecuteSqlRaw reads braces as placeholders; the scripts have none of their own.
+            var statements = batches.Select(batch => batch.Replace("{", "{{", StringComparison.Ordinal).Replace("}", "}}", StringComparison.Ordinal));
+            foreach (var statement in statements)
             {
-                // ExecuteSqlRaw reads braces as placeholders; the scripts have none of their own.
-                var statement = batch.Replace("{", "{{", StringComparison.Ordinal).Replace("}", "}}", StringComparison.Ordinal);
                 context.Database.ExecuteSqlRaw(statement);
             }
         }

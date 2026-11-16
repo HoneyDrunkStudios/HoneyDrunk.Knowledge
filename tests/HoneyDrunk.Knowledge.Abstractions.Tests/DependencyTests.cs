@@ -30,9 +30,8 @@ public sealed class DependencyTests
             .OrderBy(reference => reference.name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(
-            [("HoneyDrunk.AI.Abstractions", (string?)null), ("HoneyDrunk.Standards", "all")],
-            packages);
+        (string name, string? privateAssets)[] expected = [("HoneyDrunk.AI.Abstractions", null), ("HoneyDrunk.Standards", "all")];
+        Assert.Equal(expected, packages);
         Assert.Empty(project.Descendants("ProjectReference"));
     }
 }
