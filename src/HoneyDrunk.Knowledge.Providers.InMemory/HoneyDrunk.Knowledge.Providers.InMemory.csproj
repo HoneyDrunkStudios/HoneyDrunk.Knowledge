@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>In-memory HoneyDrunk knowledge store for tests and local development. Not for production composition.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HoneyDrunk.Knowledge.Abstractions\HoneyDrunk.Knowledge.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\KnowledgeStoreRules.cs" Link="Shared\KnowledgeStoreRules.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="HoneyDrunk.Standards" Version="0.4.4" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="CHANGELOG.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

@@ -74,7 +74,7 @@ jobs:
       security-events: write
     uses: HoneyDrunkStudios/HoneyDrunk.Actions/.github/workflows/release.yml@e3aa37c20dffe55155d95793465bcb6d94f280a2
     with:
-      dotnet-version: '10.0.x'
+      dotnet-version: '11.0.100'
       configuration: 'Release'
       runs-on: 'ubuntu-latest'
       working-directory: '.'
@@ -87,7 +87,10 @@ jobs:
       github-release-tag: ${{ needs.prepare.outputs.version_tag }}
       release-product-name: HoneyDrunk.Knowledge
       release-nuget-packages: |
+        HoneyDrunk.Knowledge.Abstractions
         HoneyDrunk.Knowledge
+        HoneyDrunk.Knowledge.Providers.InMemory
+        HoneyDrunk.Knowledge.Providers.Data
       release-docs-url: 'https://github.com/HoneyDrunkStudios/HoneyDrunk.Knowledge#readme'
       actions-ref: 'e3aa37c20dffe55155d95793465bcb6d94f280a2'
 
@@ -116,7 +119,7 @@ jobs:
         persist-credentials: false
     - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
       with:
-        dotnet-version: 10.0.x
+        dotnet-version: 11.0.100
     - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
       with:
         name: nuget-packages
@@ -126,7 +129,11 @@ jobs:
       with:
         user: tatteddev
         expected-version: ${{ needs.prepare.outputs.version }}
-        expected-packages: HoneyDrunk.Knowledge
+        expected-packages: |-
+          HoneyDrunk.Knowledge.Abstractions
+          HoneyDrunk.Knowledge
+          HoneyDrunk.Knowledge.Providers.InMemory
+          HoneyDrunk.Knowledge.Providers.Data
     - name: Generate release notes
       id: notes
       uses: ./.github/actions-repo/.github/actions/release/generate-notes
@@ -134,7 +141,10 @@ jobs:
         version: ${{ needs.prepare.outputs.version }}
         product-name: HoneyDrunk.Knowledge
         nuget-packages: |
+          HoneyDrunk.Knowledge.Abstractions
           HoneyDrunk.Knowledge
+          HoneyDrunk.Knowledge.Providers.InMemory
+          HoneyDrunk.Knowledge.Providers.Data
         docs-url: https://github.com/HoneyDrunkStudios/HoneyDrunk.Knowledge#readme
     - name: Create GitHub Release after successful publication
       uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64

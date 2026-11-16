@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Runs the store contract on SQL Server with the shipped table scripts deployed. It needs a SQL
+    Server instance named by HONEYDRUNK_KNOWLEDGE_TEST_SQLSERVER, so it is not in HoneyDrunk.Knowledge.slnx.
+  -->
+  <PropertyGroup><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\HoneyDrunk.Knowledge.Providers.Data\HoneyDrunk.Knowledge.Providers.Data.csproj" />
+    <ProjectReference Include="..\..\src\HoneyDrunk.Knowledge.Abstractions\HoneyDrunk.Knowledge.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Compile Include="..\HoneyDrunk.Knowledge.Providers.Data.Tests\PagedSearchCheck.cs" Link="Shared\PagedSearchCheck.cs" />
+    <None Include="..\..\src\HoneyDrunk.Knowledge.Providers.Data\Sql\*.sql" Link="Sql\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="HoneyDrunk.Standards" Version="0.4.4" PrivateAssets="all" />
+    <PackageReference Include="HoneyDrunk.Standards.Tests" Version="0.4.4" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="11.0.0" />
+  </ItemGroup>
+</Project>

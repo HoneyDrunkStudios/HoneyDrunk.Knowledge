@@ -1,0 +1,63 @@
+# package: HoneyDrunk.Knowledge.Abstractions
+# version: 0.1.0
+# roots: IKnowledgeStore, IDocumentIngester, IRetrievalPipeline, KnowledgeSource
+type HoneyDrunk.Knowledge.Abstractions.IDocumentIngester: interface
+  HoneyDrunk.Knowledge.Abstractions.IDocumentIngester public method System.Threading.Tasks.Task<HoneyDrunk.Knowledge.Abstractions.IngestResult> IngestAsync(HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument document, System.Threading.CancellationToken cancellationToken = default)
+type HoneyDrunk.Knowledge.Abstractions.IKnowledgeStore: interface
+  HoneyDrunk.Knowledge.Abstractions.IKnowledgeStore public method System.Threading.Tasks.Task<HoneyDrunk.Knowledge.Abstractions.IngestOutcome> StoreVersionAsync(HoneyDrunk.Knowledge.Abstractions.KnowledgeSource source, System.Collections.Generic.IReadOnlyList<HoneyDrunk.Knowledge.Abstractions.KnowledgeChunk> chunks, System.Threading.CancellationToken cancellationToken = default)
+  HoneyDrunk.Knowledge.Abstractions.IKnowledgeStore public method System.Threading.Tasks.Task<HoneyDrunk.Knowledge.Abstractions.KnowledgeSource?> GetSourceAsync(System.String sourceId, System.Threading.CancellationToken cancellationToken = default)
+  HoneyDrunk.Knowledge.Abstractions.IKnowledgeStore public method System.Threading.Tasks.Task<HoneyDrunk.Knowledge.Abstractions.RetrievalResult> SearchAsync(HoneyDrunk.Knowledge.Abstractions.SimilarityQuery query, System.Threading.CancellationToken cancellationToken = default)
+  HoneyDrunk.Knowledge.Abstractions.IKnowledgeStore public method System.Threading.Tasks.Task<System.Boolean> DeleteSourceAsync(System.String sourceId, System.Threading.CancellationToken cancellationToken = default)
+type HoneyDrunk.Knowledge.Abstractions.IRetrievalPipeline: interface
+  HoneyDrunk.Knowledge.Abstractions.IRetrievalPipeline public method System.Threading.Tasks.Task<HoneyDrunk.Knowledge.Abstractions.RetrievalResult> RetrieveAsync(HoneyDrunk.Knowledge.Abstractions.RetrievalRequest request, System.Threading.CancellationToken cancellationToken = default)
+type HoneyDrunk.Knowledge.Abstractions.IngestOutcome: enum System.Int32 implements System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+  HoneyDrunk.Knowledge.Abstractions.IngestOutcome value Added = 0
+  HoneyDrunk.Knowledge.Abstractions.IngestOutcome value Superseded = 1
+  HoneyDrunk.Knowledge.Abstractions.IngestOutcome value Unchanged = 2
+type HoneyDrunk.Knowledge.Abstractions.IngestResult: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.IngestResult>
+  HoneyDrunk.Knowledge.Abstractions.IngestResult public ctor(HoneyDrunk.Knowledge.Abstractions.KnowledgeSource Source, HoneyDrunk.Knowledge.Abstractions.IngestOutcome Outcome, System.Int32 ChunkCount)
+  HoneyDrunk.Knowledge.Abstractions.IngestResult public property HoneyDrunk.Knowledge.Abstractions.IngestOutcome Outcome { get; }
+  HoneyDrunk.Knowledge.Abstractions.IngestResult public property HoneyDrunk.Knowledge.Abstractions.KnowledgeSource Source { get; }
+  HoneyDrunk.Knowledge.Abstractions.IngestResult public property System.Int32 ChunkCount { get; }
+type HoneyDrunk.Knowledge.Abstractions.KnowledgeChunk: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.KnowledgeChunk>
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeChunk public ctor(System.Int32 Position, HoneyDrunk.AI.Abstractions.Embeddings.Embedding Embedding)
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeChunk public override method System.String ToString()
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeChunk public property HoneyDrunk.AI.Abstractions.Embeddings.Embedding Embedding { get; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeChunk public property System.Int32 Position { get; }
+type HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument>
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument public ctor(System.String SourceId, System.String Origin, System.String Version, System.String Text)
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument public override method System.String ToString()
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument public property System.String Origin { get; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument public property System.String SourceId { get; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument public property System.String Text { get; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeDocument public property System.String Version { get; }
+type HoneyDrunk.Knowledge.Abstractions.KnowledgeSource: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.KnowledgeSource>
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeSource public ctor(System.String SourceId, System.String Origin, System.String Version, System.DateTimeOffset LastUpdatedAt, System.String EmbeddingModelId)
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeSource public property System.DateTimeOffset LastUpdatedAt { get; init; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeSource public property System.String EmbeddingModelId { get; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeSource public property System.String Origin { get; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeSource public property System.String SourceId { get; }
+  HoneyDrunk.Knowledge.Abstractions.KnowledgeSource public property System.String Version { get; }
+type HoneyDrunk.Knowledge.Abstractions.RetrievalRequest: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.RetrievalRequest>
+  HoneyDrunk.Knowledge.Abstractions.RetrievalRequest public ctor(System.String QueryText, System.Collections.Generic.IReadOnlyList<System.String> SourceIds, System.Int32 Limit = 5)
+  HoneyDrunk.Knowledge.Abstractions.RetrievalRequest public override method System.String ToString()
+  HoneyDrunk.Knowledge.Abstractions.RetrievalRequest public property System.Collections.Generic.IReadOnlyList<System.String> SourceIds { get; }
+  HoneyDrunk.Knowledge.Abstractions.RetrievalRequest public property System.Int32 Limit { get; }
+  HoneyDrunk.Knowledge.Abstractions.RetrievalRequest public property System.String QueryText { get; }
+type HoneyDrunk.Knowledge.Abstractions.RetrievalResult: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.RetrievalResult>
+  HoneyDrunk.Knowledge.Abstractions.RetrievalResult public ctor(System.Collections.Generic.IReadOnlyList<HoneyDrunk.Knowledge.Abstractions.RetrievedChunk> Chunks, System.Collections.Generic.IReadOnlyList<System.String> MismatchedSourceIds)
+  HoneyDrunk.Knowledge.Abstractions.RetrievalResult public property System.Collections.Generic.IReadOnlyList<HoneyDrunk.Knowledge.Abstractions.RetrievedChunk> Chunks { get; }
+  HoneyDrunk.Knowledge.Abstractions.RetrievalResult public property System.Collections.Generic.IReadOnlyList<System.String> MismatchedSourceIds { get; }
+type HoneyDrunk.Knowledge.Abstractions.RetrievedChunk: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.RetrievedChunk>
+  HoneyDrunk.Knowledge.Abstractions.RetrievedChunk public ctor(HoneyDrunk.Knowledge.Abstractions.KnowledgeSource Source, System.Int32 Position, System.String Text, System.Double Score)
+  HoneyDrunk.Knowledge.Abstractions.RetrievedChunk public override method System.String ToString()
+  HoneyDrunk.Knowledge.Abstractions.RetrievedChunk public property HoneyDrunk.Knowledge.Abstractions.KnowledgeSource Source { get; }
+  HoneyDrunk.Knowledge.Abstractions.RetrievedChunk public property System.Double Score { get; }
+  HoneyDrunk.Knowledge.Abstractions.RetrievedChunk public property System.Int32 Position { get; }
+  HoneyDrunk.Knowledge.Abstractions.RetrievedChunk public property System.String Text { get; }
+type HoneyDrunk.Knowledge.Abstractions.SimilarityQuery: sealed class implements System.IEquatable<HoneyDrunk.Knowledge.Abstractions.SimilarityQuery>
+  HoneyDrunk.Knowledge.Abstractions.SimilarityQuery public ctor(HoneyDrunk.AI.Abstractions.Embeddings.Embedding Query, System.Collections.Generic.IReadOnlyList<System.String> SourceIds, System.Int32 Limit)
+  HoneyDrunk.Knowledge.Abstractions.SimilarityQuery public override method System.String ToString()
+  HoneyDrunk.Knowledge.Abstractions.SimilarityQuery public property HoneyDrunk.AI.Abstractions.Embeddings.Embedding Query { get; }
+  HoneyDrunk.Knowledge.Abstractions.SimilarityQuery public property System.Collections.Generic.IReadOnlyList<System.String> SourceIds { get; }
+  HoneyDrunk.Knowledge.Abstractions.SimilarityQuery public property System.Int32 Limit { get; }

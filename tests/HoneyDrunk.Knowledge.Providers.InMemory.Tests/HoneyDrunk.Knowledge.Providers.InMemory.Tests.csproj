@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\HoneyDrunk.Knowledge.Providers.InMemory\HoneyDrunk.Knowledge.Providers.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\HoneyDrunk.Knowledge.Abstractions\HoneyDrunk.Knowledge.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="HoneyDrunk.Standards" Version="0.4.4" PrivateAssets="all" />
+    <PackageReference Include="HoneyDrunk.Standards.Tests" Version="0.4.4" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
