@@ -14,7 +14,26 @@ namespace HoneyDrunk.Knowledge.Providers.Data;
 /// <param name="contexts">Creates a context per call.</param>
 internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext> contexts)
 {
+    /// <summary>
+    /// The most chunk rows one search page reads. A retrying execution strategy (<c>EnableRetryOnFailure</c>)
+    /// makes Entity Framework buffer a query's whole result, so a search reads its candidates page by page and
+    /// never holds more than one page: at the longest vector (8,192 values, 32 KiB) a page carries at most 8 MiB of
+    /// vector payload, whatever the number of sources and chunks searched.
+    /// </summary>
+    public const int DefaultSearchPageRows = 256;
+
     private readonly IDbContextFactory<KnowledgeDbContext> contexts = contexts ?? throw new ArgumentNullException(nameof(contexts));
+    private readonly int searchPageRows = DefaultSearchPageRows;
+
+    /// <summary>
+    /// Gets the most chunk rows one search page reads; <see cref="DefaultSearchPageRows"/> unless a test lowers it
+    /// to make a small search span several pages.
+    /// </summary>
+    public int SearchPageRows
+    {
+        get => this.searchPageRows;
+        init => this.searchPageRows = value >= 1 ? value : throw new ArgumentOutOfRangeException(nameof(value), "A search page reads at least one row.");
+    }
 
     /// <summary>Reads the current version of a source.</summary>
     /// <param name="sourceId">The source id.</param>
@@ -65,8 +84,9 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
 
     /// <summary>
     /// Ranks the chunks of the current versions of the named sources. Sources of another embedding model or vector
-    /// length are listed, never scored. Only each chunk's version, position and vector are streamed; a heap keeps
-    /// the best <see cref="SimilarityQuery.Limit"/>, and text is then loaded for those chunks alone.
+    /// length are listed, never scored. <see cref="KnowledgeSearchDataService"/> reads the chunks' versions, positions and
+    /// vectors in pages of at most <see cref="SearchPageRows"/> rows, keeps the best
+    /// <see cref="SimilarityQuery.Limit"/> across the pages and loads text for those chunks alone.
     /// </summary>
     /// <param name="query">The query.</param>
     /// <param name="cancellationToken">A token to observe for cancellation.</param>
@@ -90,8 +110,7 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
             return new RetrievalResult([], mismatched);
         }
 
-        var winners = await RankAsync(context, scorable, query, cancellationToken).ConfigureAwait(false);
-        var chunks = await LoadTextAsync(context, winners, cancellationToken).ConfigureAwait(false);
+        var chunks = await KnowledgeSearchDataService.SearchAsync(context, scorable, query, this.searchPageRows, cancellationToken).ConfigureAwait(false);
         return new RetrievalResult(chunks, mismatched);
     }
 
@@ -153,77 +172,6 @@ internal sealed class KnowledgeDataService(IDbContextFactory<KnowledgeDbContext>
     {
         context.ChangeTracker.Clear();
         return await Current(context, write.Source.SourceId).Select(row => row.Id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<Hit[]> RankAsync(KnowledgeDbContext context, Dictionary<string, KnowledgeSource> scorable, SimilarityQuery query, CancellationToken cancellationToken)
-    {
-        string[] versionIds = [.. scorable.Keys];
-        float[] queryVector = [.. query.Query.Vector];
-        var values = new float[queryVector.Length];
-        var kept = new PriorityQueue<Hit, Hit>(query.Limit + 1, Hit.WorstFirst);
-        var rows = context.Chunks.AsNoTracking()
-            .Where(row => versionIds.Contains(row.SourceVersionId))
-            .Select(row => new { row.SourceVersionId, row.Position, row.Vector })
-            .AsAsyncEnumerable()
-            .WithCancellation(cancellationToken)
-            .ConfigureAwait(false);
-        await foreach (var row in rows)
-        {
-            VectorCodec.Decode(row.Vector, values);
-            var hit = new Hit(row.SourceVersionId, scorable[row.SourceVersionId], row.Position, KnowledgeStoreRules.Cosine(queryVector, values));
-            if (kept.Count < query.Limit)
-            {
-                kept.Enqueue(hit, hit);
-            }
-            else
-            {
-                kept.EnqueueDequeue(hit, hit);
-            }
-        }
-
-        return [.. kept.UnorderedItems.Select(item => item.Element).Order(Hit.BestFirst)];
-    }
-
-    private static async Task<RetrievedChunk[]> LoadTextAsync(KnowledgeDbContext context, Hit[] winners, CancellationToken cancellationToken)
-    {
-        var texts = new Dictionary<ChunkKey, string>();
-        foreach (var version in winners.GroupBy(hit => hit.VersionId, StringComparer.Ordinal))
-        {
-            var versionId = version.Key;
-            int[] positions = [.. version.Select(hit => hit.Position)];
-            var rows = await context.Chunks.AsNoTracking()
-                .Where(row => row.SourceVersionId == versionId && positions.Contains(row.Position))
-                .Select(row => new { row.Position, row.Text })
-                .ToListAsync(cancellationToken)
-                .ConfigureAwait(false);
-            foreach (var row in rows)
-            {
-                texts[new ChunkKey(versionId, row.Position)] = row.Text;
-            }
-        }
-
-        // A version superseded while the search ran has lost its chunks: its winners are not returned.
-        return winners
-            .Where(hit => texts.ContainsKey(hit.Key))
-            .Select(hit => new RetrievedChunk(hit.Source, hit.Position, texts[hit.Key], hit.Score))
-            .ToArray();
-    }
-
-    /// <summary>Names one chunk: its version and its position.</summary>
-    private readonly record struct ChunkKey(string VersionId, int Position);
-
-    /// <summary>A scored chunk, without its text.</summary>
-    private readonly record struct Hit(string VersionId, KnowledgeSource Source, int Position, double Score)
-    {
-        /// <summary>Orders hits as the result does: score descending, then source id, then position.</summary>
-        public static readonly IComparer<Hit> BestFirst = Comparer<Hit>.Create(
-            (left, right) => KnowledgeStoreRules.CompareRank(left.Score, left.Source.SourceId, left.Position, right.Score, right.Source.SourceId, right.Position));
-
-        /// <summary>Orders hits worst first, so the heap's root is the hit to drop.</summary>
-        public static readonly IComparer<Hit> WorstFirst = Comparer<Hit>.Create((left, right) => BestFirst.Compare(right, left));
-
-        /// <summary>Gets the chunk the hit names.</summary>
-        public ChunkKey Key => new(this.VersionId, this.Position);
     }
 
     /// <summary>One version to store, encoded once and written by each attempt.</summary>

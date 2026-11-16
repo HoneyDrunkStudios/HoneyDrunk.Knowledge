@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Compile Include="..\HoneyDrunk.Knowledge.Providers.Data.Tests\PagedSearchCheck.cs" Link="Shared\PagedSearchCheck.cs" />
     <None Include="..\..\src\HoneyDrunk.Knowledge.Providers.Data\Sql\*.sql" Link="Sql\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

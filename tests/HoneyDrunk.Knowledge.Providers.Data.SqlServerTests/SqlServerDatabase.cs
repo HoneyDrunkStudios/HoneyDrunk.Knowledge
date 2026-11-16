@@ -79,6 +79,16 @@ internal sealed class SqlServerDatabase : IDisposable
     /// <returns>The store.</returns>
     public DataKnowledgeStore CreateStore() => new(new KnowledgeDataService(new ContextFactory(() => this.CreateContext())));
 
+    /// <summary>
+    /// Creates a store as <see cref="CreateStore()"/> does, whose searches read at most
+    /// <paramref name="searchPageRows"/> chunk rows a page.
+    /// </summary>
+    /// <param name="searchPageRows">The most chunk rows one search page reads.</param>
+    /// <param name="interceptors">Interceptors to attach to every context the store opens.</param>
+    /// <returns>The store.</returns>
+    public DataKnowledgeStore CreatePagedStore(int searchPageRows, params IInterceptor[] interceptors) =>
+        new(new KnowledgeDataService(new ContextFactory(() => this.CreateContext(interceptors))) { SearchPageRows = searchPageRows });
+
     /// <summary>Runs one statement against the test database.</summary>
     /// <param name="sql">The statement.</param>
     /// <returns>A task.</returns>

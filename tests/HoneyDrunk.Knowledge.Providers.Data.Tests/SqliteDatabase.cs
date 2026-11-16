@@ -53,6 +53,13 @@ internal sealed class SqliteDatabase : IDisposable
     public DataKnowledgeStore CreateStore(Action<DbContextOptionsBuilder> configure) =>
         new(new KnowledgeDataService(new ContextFactory(configure)));
 
+    /// <summary>Creates a store whose searches read at most <paramref name="searchPageRows"/> chunk rows a page.</summary>
+    /// <param name="searchPageRows">The most chunk rows one search page reads.</param>
+    /// <param name="interceptors">Interceptors to attach to every context the store opens.</param>
+    /// <returns>The store.</returns>
+    public DataKnowledgeStore CreatePagedStore(int searchPageRows, params IInterceptor[] interceptors) =>
+        new(new KnowledgeDataService(new ContextFactory(options => this.Configure(options, interceptors))) { SearchPageRows = searchPageRows });
+
     /// <inheritdoc />
     public void Dispose()
     {

@@ -1,5 +1,6 @@
 using HoneyDrunk.Knowledge.Abstractions;
 using HoneyDrunk.Knowledge.Providers.Contract;
+using HoneyDrunk.Knowledge.Providers.Data.Tests;
 using Xunit;
 using static HoneyDrunk.Knowledge.Providers.Contract.TestSources;
 
@@ -45,6 +46,21 @@ public sealed class SqlServerDataKnowledgeStoreTests : KnowledgeStoreContract, I
         Assert.Equal(["1"], await this.CountAsync($"[EmbeddingModelId] = N'{Composed}'"));
         Assert.Equal(["0"], await this.CountAsync("[SourceId] = 'DOCS:INTRO'"));
     }
+
+    /// <summary>
+    /// A search read over several pages, each its own query under the retrying execution strategy, gives the
+    /// brute-force ranking and the one-page result.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public Task Search_over_several_pages_equals_brute_force() =>
+        PagedSearchCheck.Paged_search_equals_brute_force(rows => this.database.CreatePagedStore(rows));
+
+    /// <summary>A source superseded between two search pages returns no passage, and none of the new version's text.</summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public Task Supersede_between_search_pages_returns_no_text_of_the_new_version() =>
+        PagedSearchCheck.Supersede_between_pages_returns_no_text_of_the_new_version((rows, interceptors) => this.database.CreatePagedStore(rows, interceptors));
 
     /// <inheritdoc />
     public void Dispose() => this.database.Dispose();

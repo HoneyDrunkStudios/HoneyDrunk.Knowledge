@@ -40,6 +40,48 @@ public sealed class DataKnowledgeStoreTests : KnowledgeStoreContract, IDisposabl
         Assert.Equal(2, found.Chunks.Count);
     }
 
+    /// <summary>
+    /// The search reads vectors in pages of at most the set number of rows, each its own query: nine chunks in
+    /// pages of four are three reads (4, 4, 1); in pages of three, a last full page is followed by one empty read.
+    /// No page reads text, and the result equals the one-page search.
+    /// </summary>
+    /// <param name="pageRows">The most rows one page reads.</param>
+    /// <param name="expectedRows">The rows each vector read returns, in order.</param>
+    /// <returns>A task.</returns>
+    [Theory]
+    [InlineData(4, new[] { 4, 4, 1 })]
+    [InlineData(3, new[] { 3, 3, 3, 0 })]
+    [InlineData(9, new[] { 9, 0 })]
+    [InlineData(10, new[] { 9 })]
+    public async Task Search_reads_vectors_in_pages_of_the_set_size(int pageRows, int[] expectedRows)
+    {
+        var writer = this.database.CreateStore();
+        await writer.StoreVersionAsync(Source("docs:a"), Chunks("a", ModelA, [1f, 0f], [0f, 1f], [1f, 1f], [-1f, 0f], [0f, -1f]));
+        await writer.StoreVersionAsync(Source("docs:b", updatedAfter: TimeSpan.FromMinutes(1)), Chunks("b", ModelA, [2f, 0f], [1f, 2f], [0f, 3f], [-1f, -1f]));
+        var query = Query([1f, 0f], ["docs:a", "docs:b"], limit: 3);
+        var log = new ReadLog();
+
+        var paged = await this.database.CreatePagedStore(pageRows, log).SearchAsync(query);
+
+        var pages = log.Reads.Where(read => read.Command.Contains("\"Vector\"", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(expectedRows, pages.Select(read => read.Rows));
+        Assert.All(pages, read => Assert.DoesNotContain("\"Text\"", read.Command, StringComparison.Ordinal));
+        Assert.Equal((await writer.SearchAsync(query)).Chunks, paged.Chunks);
+        Assert.Equal(["a 0", "b 0", "a 2"], paged.Chunks.Select(chunk => chunk.Text));
+    }
+
+    /// <summary>A search read over several pages gives the brute-force ranking and the one-page result.</summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public Task Search_over_several_pages_equals_brute_force() =>
+        PagedSearchCheck.Paged_search_equals_brute_force(rows => this.database.CreatePagedStore(rows));
+
+    /// <summary>A source superseded between two search pages returns no passage, and none of the new version's text.</summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public Task Supersede_between_search_pages_returns_no_text_of_the_new_version() =>
+        PagedSearchCheck.Supersede_between_pages_returns_no_text_of_the_new_version((rows, interceptors) => this.database.CreatePagedStore(rows, interceptors));
+
     /// <summary>A search that names only mismatched or unknown sources reads no chunk at all.</summary>
     /// <returns>A task.</returns>
     [Fact]
